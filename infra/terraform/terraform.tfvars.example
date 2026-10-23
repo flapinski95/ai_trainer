@@ -1,0 +1,6 @@
+aws_region                       = "eu-central-1"
+name_prefix                      = "ai-trainer"
+environment                      = "dev"
+strava_webhook_lambda_arn        = "arn:aws:lambda:eu-central-1:123456789012:function:ai-trainer-strava-webhook"
+garmin_webhook_lambda_arn        = "arn:aws:lambda:eu-central-1:123456789012:function:ai-trainer-garmin-webhook"
+dynamodb_deletion_protection_enabled = true
