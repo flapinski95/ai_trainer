@@ -5,7 +5,7 @@ module "dynamodb" {
   environment                          = var.environment
   dynamodb_deletion_protection_enabled = var.dynamodb_deletion_protection_enabled
   kms_key_deletion_window_in_days      = var.kms_key_deletion_window_in_days
-  stream_enabled                       = var.enable_strava_worker || var.enable_garmin_integration
+  stream_enabled                       = var.enable_strava_worker || var.enable_garmin_integration || var.enable_web_push
 }
 
 module "webhooks" {

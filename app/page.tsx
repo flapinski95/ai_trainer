@@ -2,63 +2,35 @@ import {
   Activity,
   ArrowUpRight,
   Bike,
-  CalendarDays,
-  Check,
-  CircleUserRound,
   Footprints,
-  KeyRound,
-  Link2,
   ShieldCheck,
 } from "lucide-react";
 import { auth } from "@/auth";
 import { authStore } from "@/lib/auth-store";
 import { authSettings } from "@/lib/server-config";
-import { connectStrava, connectGarmin, logout } from "./actions";
-import { SubmitButton } from "./submit-button";
-import { recentWorkouts } from "@/lib/workouts";
+import { recentWorkouts, workoutProvider } from "@/lib/workouts";
 import type { Workout } from "@/backend/workouts/store";
 import { RefreshWorkouts } from "./refresh-workouts";
-import { HistorySync, type HistoryStatus } from "./history-sync";
 import { historyStore } from "@/lib/history-store";
-import { activityProvider } from "@/backend/providers/policy";
-import { aiCredentialStore } from "@/lib/ai-credential-store";
-import { AIKeySettings } from "./ai-key-settings";
+import { ScreenHeader } from "./screen-header";
+import { RecoverySummary } from "./recovery-summary";
 
 export const dynamic = "force-dynamic";
 type ConnectionSummary = Awaited<
   ReturnType<ReturnType<typeof authStore>["connection"]>
 >;
-type AIKeyStatus = Awaited<
-  ReturnType<ReturnType<typeof aiCredentialStore>["status"]>
->;
-
-const errors = new Map([
-  [
-    "permissions",
-    "Nie przyznano dostepu do aktywnosci. Polacz konto ponownie.",
-  ],
-  ["configuration", "Logowanie jest chwilowo niedostepne."],
-  ["ai-key", "Nie udalo sie zaktualizowac klucza AI. Sprobuj ponownie."],
-]);
-
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; key?: string }>;
+export default async function Home({ searchParams }: {
+  searchParams: Promise<{ import?: string }>;
 }) {
+  const query = await searchParams;
   const settings = authSettings();
   const configured = Boolean(settings);
   const session = configured ? await auth() : null;
-  const query = await searchParams;
-  const error = typeof query.error === "string" ? query.error : undefined;
-  const keyNotice = typeof query.key === "string" ? query.key : undefined;
   let connection: Awaited<
     ReturnType<ReturnType<typeof authStore>["connection"]>
   > = null;
   let garminConnection: ConnectionSummary = null;
   let connectionError = false;
-  let aiKeys: AIKeyStatus = [];
-  let aiKeysError = false;
   if (session?.user.id) {
     try {
       const store = authStore();
@@ -69,21 +41,15 @@ export default async function Home({
     } catch {
       connectionError = true;
     }
-    try {
-      aiKeys = await aiCredentialStore().status(session.user.id);
-    } catch {
-      aiKeysError = true;
-    }
   }
-  const selectedProvider = activityProvider({
-    strava: connection,
-    garmin: garminConnection,
-  });
+  let selectedProvider: "strava" | "garmin" | null = null;
+  try {
+    selectedProvider = await workoutProvider();
+  } catch {
+    connectionError = true;
+  }
   const connected = selectedProvider !== null;
-  const stravaConnected = Boolean(connection?.active);
   const garminConnected = Boolean(garminConnection?.active);
-  let history: HistoryStatus = null;
-  let historyError = false;
   let trainingContext: {
     count: number;
     distance: number;
@@ -92,12 +58,12 @@ export default async function Home({
   if (connected && session?.user.id) {
     try {
       const store = historyStore();
-      [history, trainingContext] = await Promise.all([
-        stravaConnected ? store.status(session.user.id) : Promise.resolve(null),
-        store.context(session.user.id, selectedProvider ?? "strava"),
-      ]);
+      trainingContext = await store.context(
+        session.user.id,
+        selectedProvider ?? "strava",
+      );
     } catch {
-      historyError = true;
+      trainingContext = null;
     }
   }
   let workouts: Workout[] = [];
@@ -126,44 +92,12 @@ export default async function Home({
   }).format(new Date());
 
   return (
-    <div className="workspace">
-      <aside className="sidebar">
-        <a className="brand" href="/" aria-label="AI Trainer">
-          <Activity size={25} strokeWidth={2.5} />
-          <span>
-            AI TRAINER<span className="brand-dot">.</span>
-          </span>
-        </a>
-        <div className="workspace-label">TWOJA PRZESTRZEN</div>
-        <nav aria-label="Nawigacja">
-          <a className="nav-link active" href="#activities">
-            <CalendarDays size={18} /> Dziennik
-          </a>
-          <a className="nav-link" href="#connection">
-            <Link2 size={18} /> Polaczenia
-          </a>
-          {session && (
-            <a className="nav-link" href="#ai-keys">
-              <KeyRound size={18} /> Klucze AI
-            </a>
-          )}
-        </nav>
-        <div className="sidebar-bottom">
-          <ShieldCheck size={17} />
-          <span>Prywatne konto</span>
-        </div>
-      </aside>
-
-      <main>
-        <header className="topbar">
-          <span>DZIENNIK TRENINGOWY</span>
-          <div className="account-indicator">
-            <CircleUserRound size={19} />
-            <span className="account-name">
-              {session?.user.name ?? "Nie zalogowano"}
-            </span>
-          </div>
-        </header>
+    <>
+      <ScreenHeader
+        title="DZIENNIK TRENINGOWY"
+        accountName={session?.user.name}
+      />
+      <div className="screen-content">
         <div className="content">
           <div className="page-heading">
             <div>
@@ -179,23 +113,22 @@ export default async function Home({
               </span>
             </div>
           </div>
-          {error && (
+          {connectionError && (
             <p className="notice" role="alert">
-              {errors.get(error) ??
-                "Nie udalo sie zalogowac. Sprobuj ponownie."}
+              Nie mozna odczytac statusu polaczen.
             </p>
           )}
-          {keyNotice && !error && (
+          {query.import === "garmin" && (
             <p className="notice notice-success" role="status">
-              {keyNotice === "saved"
-                ? "Klucz AI zostal zapisany."
-                : keyNotice === "removed"
-                  ? "Klucz AI zostal usuniety."
-                  : ""}
+              Historia Garmina została zaimportowana.
+              {selectedProvider === "strava" && " Dziennik pokazuje Stravę jako główne źródło; historia Garmina pozostaje zapisana osobno."}
             </p>
           )}
+          <RecoverySummary
+            enabled={Boolean(session?.user.id)}
+          />
 
-          <div className="dashboard-grid">
+          <div className="dashboard-grid journal-grid">
             <section id="activities" className="activity-section">
               <figure className="ride-image">
                 <img src="/cycling.jpg" alt="Rower szosowy" />
@@ -326,204 +259,13 @@ export default async function Home({
               </div>
             </section>
 
-            <section id="connection" className="connection-section">
-              <div className="section-title">
-                <h2>Konto sportowe</h2>
-                <Link2 size={18} />
-              </div>
-              {session && (
-                <dl className="connection-details">
-                  <div>
-                    <dt>Treningi</dt>
-                    <dd>
-                      {selectedProvider === "strava"
-                        ? "Strava"
-                        : selectedProvider === "garmin"
-                          ? "Garmin"
-                          : "Brak zrodla"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Zdrowie</dt>
-                    <dd>
-                      {garminConnected &&
-                      garminConnection?.scopes.some(
-                        (permission) =>
-                          permission === "HEALTH_EXPORT" ||
-                          permission === "MCT_EXPORT",
-                      )
-                        ? "Garmin"
-                        : "Nie polaczono"}
-                    </dd>
-                  </div>
-                </dl>
-              )}
-              <div className="provider-heading">
-                <Activity size={32} className="garmin-logo" />
-                <div>
-                  <h3>Garmin</h3>
-                  <span
-                    className={garminConnected ? "status connected" : "status"}
-                  >
-                    <span className="status-dot" />
-                    {garminConnected ? "Polaczono" : "Nie polaczono"}
-                  </span>
-                </div>
-                {garminConnected && (
-                  <Check className="provider-check" size={20} />
-                )}
-              </div>
-              {garminConnection && (
-                <dl className="connection-details">
-                  <div>
-                    <dt>ID Garmin</dt>
-                    <dd>{garminConnection.athleteId}</dd>
-                  </div>
-                  <div>
-                    <dt>Aktywnosci</dt>
-                    <dd>
-                      {garminConnection.scopes.includes("ACTIVITY_EXPORT")
-                        ? "Wlaczone"
-                        : "Brak zgody"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Zdrowie</dt>
-                    <dd>
-                      {garminConnection.scopes.includes("HEALTH_EXPORT")
-                        ? "Wlaczone"
-                        : "Brak zgody"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Zdrowie kobiet</dt>
-                    <dd>
-                      {garminConnection.scopes.includes("MCT_EXPORT")
-                        ? "Wlaczone"
-                        : "Brak zgody"}
-                    </dd>
-                  </div>
-                </dl>
-              )}
-              <form action={connectGarmin}>
-                <SubmitButton
-                  provider="garmin"
-                  disabled={!settings?.garmin}
-                  label={
-                    garminConnected
-                      ? "Ponow autoryzacje Garmin"
-                      : session
-                        ? "Polacz Garmin"
-                        : "Zaloguj przez Garmin"
-                  }
-                />
-              </form>
-              {!settings?.garmin && (
-                <p className="unavailable">Polaczenie Garmin niedostepne.</p>
-              )}
-              <div className="connection-divider" />
-              <div className="provider-heading">
-                <img src="/strava.svg" width="34" height="34" alt="" />
-                <div>
-                  <h3>Strava</h3>
-                  <span
-                    className={stravaConnected ? "status connected" : "status"}
-                  >
-                    <span className="status-dot" />
-                    {stravaConnected ? "Polaczono" : "Nie polaczono"}
-                  </span>
-                </div>
-                {stravaConnected && (
-                  <Check className="provider-check" size={20} />
-                )}
-              </div>
-              {connectionError && (
-                <p className="notice" role="alert">
-                  Nie mozna odczytac statusu konta.
-                </p>
-              )}
-              {connection && (
-                <dl className="connection-details">
-                  <div>
-                    <dt>Zawodnik</dt>
-                    <dd>{connection.name}</dd>
-                  </div>
-                  <div>
-                    <dt>ID Strava</dt>
-                    <dd>{connection.athleteId}</dd>
-                  </div>
-                  <div>
-                    <dt>Aktywnosci</dt>
-                    <dd>
-                      {connection.scopes.some(
-                        (scope) => scope === "activity:read_all",
-                      )
-                        ? "Wszystkie"
-                        : "Publiczne i dla obserwujacych"}
-                    </dd>
-                  </div>
-                </dl>
-              )}
-              <form action={connectStrava}>
-                <SubmitButton
-                  disabled={!settings?.strava}
-                  label={
-                    stravaConnected
-                      ? "Ponow autoryzacje"
-                      : session
-                        ? "Polacz Strave"
-                        : "Zaloguj przez Strave"
-                  }
-                />
-              </form>
-              {!configured && (
-                <p className="unavailable" role="status">
-                  Logowanie chwilowo niedostepne.
-                </p>
-              )}
-              {session && (
-                <form action={logout}>
-                  <SubmitButton logout label="Wyloguj" />
-                </form>
-              )}
-              {stravaConnected && (
-                <HistorySync status={history} unavailable={historyError} />
-              )}
-              <div className="connection-divider" />
-              <div className="privacy-note">
-                <ShieldCheck size={20} />
-                <div>
-                  <h3>Kontrola nad kontem</h3>
-                  <a
-                    href="https://www.strava.com/settings/apps"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Uprawnienia w Stravie <ArrowUpRight size={13} />
-                  </a>
-                </div>
-              </div>
-            </section>
           </div>
-          {session && (
-            <div className="settings-grid">
-              {aiKeysError ? (
-                <section id="ai-keys" className="ai-key-section">
-                  <p className="notice" role="alert">
-                    Nie mozna odczytac statusu kluczy AI.
-                  </p>
-                </section>
-              ) : (
-                <AIKeySettings keys={aiKeys} />
-              )}
-            </div>
-          )}
           <footer className="page-footer">
             <span>AI TRAINER</span>
             <span>Kolarstwo. Bieganie. Twoje tempo.</span>
           </footer>
         </div>
-      </main>
-    </div>
+      </div>
+    </>
   );
 }

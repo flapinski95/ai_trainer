@@ -23,6 +23,7 @@ type Dependencies = {
     connection: Connection,
     id: string,
     metrics: WorkoutMetrics,
+    notify?: boolean,
   ) => Promise<void>;
   saveDailyMetric?: (connection: Connection, type: string, record: GarminRecord) => Promise<void>;
 };
@@ -75,6 +76,7 @@ export function createGarminProcessor(dependencies: Dependencies) {
         connection,
         activity.id,
         activity.metrics,
+        type === "activities" || type === "activityDetails",
       );
     }
   };

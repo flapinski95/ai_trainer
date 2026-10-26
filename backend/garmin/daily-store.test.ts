@@ -38,3 +38,18 @@ test("concurrent daily-source updates retry against the new manifest instead of 
   assert.equal(await store.save(connection, "dailies", record, 100), true);
   assert.equal(reads, 2); assert.equal(attempts, 2);
 });
+
+test("manual health import uses the authenticated user and KMS without fabricated OAuth consent", async () => {
+  const store = createDailyMetricStore({ get: async () => ({}), artifacts: {
+    read: async () => assert.fail("No previous metric"),
+    put: async (PK, SK, value, encrypt, metadata, _receivedAt, _ttl, consent) => {
+      assert.equal(PK, "USER#app-user"); assert.equal(SK, "METRIC#2026-10-25");
+      assert.equal(metadata.imported, true); assert.equal(consent, undefined);
+      assert.equal(await encrypt(), "encrypted"); return true;
+    },
+  }, encryption: {
+    encrypt: async (_value, context) => { assert.equal(context.userId, "app-user"); return "encrypted"; },
+    decrypt: async () => assert.fail("No old metric"),
+  } }, "table");
+  assert.equal(await store.import("app-user", { date: "2026-10-25", values: { bodyBattery: 72 } }), true);
+});

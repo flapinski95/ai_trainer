@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { type StravaEvent } from "../strava-webhook/events";
+import { zoneDistributionSchema } from "../workouts/telemetry";
 
 const identifier = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const activitySchema = z.object({
+  max_watts: z.number().finite().nonnegative().nullish().transform((value) => value ?? undefined).optional(),
+  heart_rate_zones: zoneDistributionSchema.optional(),
+  power_zones: zoneDistributionSchema.optional(),
   id: identifier,
   athlete: z.object({ id: identifier }),
   name: z.string().min(1).max(512),

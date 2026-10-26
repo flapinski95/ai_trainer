@@ -83,3 +83,21 @@ test("raw Health persistence failures do not create a false daily success", asyn
   });
   await assert.rejects(processor("health", "hrv", { userId: "garmin-1", calendarDate: "2026-10-25", lastNightAvg: 60 }));
 });
+
+test("Garmin activity summaries and details request push but manual updates do not", async () => {
+  const requested: boolean[] = [];
+  const processor = createGarminProcessor({
+    connection: async () => connection, verify: async (value) => value, revoke: async () => {},
+    saveRecord: async () => {},
+    saveActivity: async (_connection, _id, _metrics, notify) => { requested.push(notify === true); },
+  });
+  const record = {
+    userId: "garmin-1", activityId: 123, summaryId: "123",
+    startTimeInSeconds: 1792886400, durationInSeconds: 3600,
+    activityType: "CYCLING", activityName: "Ride", distanceInMeters: 20000,
+  };
+  for (const type of ["activities", "activityDetails", "manuallyUpdatedActivities"]) {
+    await processor("activity", type, record);
+  }
+  assert.deepEqual(requested, [true, true, false]);
+});

@@ -12,6 +12,9 @@ export type ActivitySummary = z.infer<typeof summarySchema>;
 export const workoutMetricsSchema = activitySchema.omit({
   id: true,
   athlete: true,
+}).extend({
+  average_speed: z.number().finite().nonnegative().optional(),
+  average_cadence: z.number().finite().nonnegative().optional(),
 });
 export type WorkoutMetrics = z.infer<typeof workoutMetricsSchema>;
 
@@ -29,12 +32,16 @@ export function normalizeSummary(
   };
 }
 
+export function isWithinDetailWindow(startDate: string, cutoff: number): boolean {
+  return Date.parse(startDate) / 1000 >= cutoff - 90 * DAY;
+}
+
 export function needsDetails(
   activity: ActivitySummary,
   cutoff: number,
 ): boolean {
   return (
-    Date.parse(activity.start_date) / 1000 >= cutoff - 90 * DAY &&
+    isWithinDetailWindow(activity.start_date, cutoff) &&
     ((activity.has_heartrate === true &&
       activity.average_heartrate === undefined) ||
       (activity.device_watts === true && activity.average_watts === undefined))
@@ -66,6 +73,11 @@ export function metrics(activity: WorkoutMetrics) {
     average_heartrate: activity.average_heartrate,
     max_heartrate: activity.max_heartrate,
     average_watts: activity.average_watts,
+    max_watts: activity.max_watts,
+    heart_rate_zones: activity.heart_rate_zones,
+    power_zones: activity.power_zones,
+    average_speed: activity.average_speed,
+    average_cadence: activity.average_cadence,
   };
 }
 

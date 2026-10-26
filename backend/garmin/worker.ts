@@ -227,7 +227,7 @@ export async function handler(
         saveDailyMetric: async (connection, type, data) => {
           await dailyMetrics.save(connection, type, data, receivedAt);
         },
-        saveActivity: async (connection, id, metrics) => {
+        saveActivity: async (connection, id, metrics, notify) => {
           await writer(
             connection,
             id,
@@ -236,6 +236,7 @@ export async function handler(
             "WEBHOOK",
             true,
             "garmin",
+            process.env.WEB_PUSH_ENABLED === "true" && notify === true,
           );
         },
       });

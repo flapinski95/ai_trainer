@@ -20,7 +20,7 @@ function formProvider(value: FormDataEntryValue | null): AIProvider | null {
 
 async function authenticatedUserId() {
   const session = await auth();
-  if (!session?.user.id) redirect("/?error=authentication");
+  if (!session?.user.id) redirect("/settings?error=authentication");
   return session.user.id;
 }
 
@@ -28,41 +28,41 @@ export async function saveAIKey(formData: FormData) {
   const userId = await authenticatedUserId();
   const provider = formProvider(formData.get("provider"));
   const apiKey = formData.get("apiKey");
-  if (!provider || typeof apiKey !== "string") redirect("/?error=ai-key");
+  if (!provider || typeof apiKey !== "string") redirect("/settings?error=ai-key");
   try {
     await aiCredentialStore().set(userId, provider, apiKey);
   } catch (error) {
     console.error("ai_credential_save_failed", {
       type: error instanceof Error ? error.name : "UnknownError",
     });
-    redirect("/?error=ai-key");
+    redirect("/settings?error=ai-key");
   }
-  revalidatePath("/");
-  redirect("/?key=saved");
+  revalidatePath("/settings");
+  redirect("/settings?key=saved");
 }
 
 export async function deleteAIKey(formData: FormData) {
   const userId = await authenticatedUserId();
   const provider = formProvider(formData.get("provider"));
-  if (!provider) redirect("/?error=ai-key");
+  if (!provider) redirect("/settings?error=ai-key");
   try {
     await aiCredentialStore().remove(userId, provider);
   } catch (error) {
     console.error("ai_credential_delete_failed", {
       type: error instanceof Error ? error.name : "UnknownError",
     });
-    redirect("/?error=ai-key");
+    redirect("/settings?error=ai-key");
   }
-  revalidatePath("/");
-  redirect("/?key=removed");
+  revalidatePath("/settings");
+  redirect("/settings?key=removed");
 }
 
 export async function connectStrava() {
-  if (!authSettings()?.strava) redirect("/?error=configuration");
+  if (!authSettings()?.strava) redirect("/settings?error=configuration");
   try {
-    await signIn("strava", { redirectTo: "/" });
+    await signIn("strava", { redirectTo: "/settings" });
   } catch (error) {
-    if (error instanceof AuthError) redirect("/?error=authentication");
+    if (error instanceof AuthError) redirect("/settings?error=authentication");
     throw error;
   }
 }
@@ -72,12 +72,12 @@ export async function logout() {
 }
 
 export async function connectGarmin() {
-  if (!authSettings()?.garmin) redirect("/?error=configuration");
+  if (!authSettings()?.garmin) redirect("/settings?error=configuration");
   try {
-    const destination = await signIn("garmin", { redirectTo: "/", redirect: false });
+    const destination = await signIn("garmin", { redirectTo: "/settings", redirect: false });
     redirect(garminAuthorizationRedirect(destination));
   } catch (error) {
-    if (error instanceof AuthError) redirect("/?error=authentication");
+    if (error instanceof AuthError) redirect("/settings?error=authentication");
     throw error;
   }
 }
@@ -94,7 +94,7 @@ export async function synchronizeHistory(_previous: { message: string }) {
       connection.scopes.includes("activity:read_all"),
       true,
     );
-    revalidatePath("/");
+    revalidatePath("/settings");
     return {
       message: created
         ? "Zlecono synchronizacje historii."

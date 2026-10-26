@@ -59,3 +59,20 @@ Primary Use Case: Stateful AI coach chat analyzing workouts, daily HRV, sleep sc
 ### Step 4: PWA Web Push & Ivy League UI Polish
 - Apply Tailwind CSS color tokens (`#FDFBF7` / `#7A1A28` Light, `#121110` / `#9E2A3B` Dark) with 90/10 typography rules.
 - Configure Service Worker (`sw.ts`), Web Push endpoints, and post-workout Web Push trigger to open `CHAT#<sessionId>`.
+
+### Step 5: Final Public Deployment, Domain & Production Push (Deferred)
+Complete this stage last, after Steps 1-4. These items remain pending; implemented code and local notification tests do not mean production deployment is complete. Domain purchases, public deployment, paid resources, and `terraform apply` require explicit user approval.
+
+- [ ] Use Vercel as the proposed Next.js hosting target; keep Lambda, DynamoDB, KMS, and Secrets Manager in AWS (`eu-north-1`). Confirm the hosting choice and costs before deployment.
+- [ ] Start with a stable public Vercel HTTPS address if a custom domain is not yet needed. AWS Lambda cannot reach `localhost:3000`; a public HTTPS tunnel is an option for temporary local checks only.
+- [ ] Choose and register a custom domain when approved (e.g. OVHcloud/cyber_Folks for `.pl`, or Cloudflare Registrar for supported extensions). Check renewal pricing, enable registrar 2FA and automatic renewal, add the domain in Vercel, and configure the DNS records Vercel specifies. Verify HTTPS before switching traffic.
+- [ ] Configure production Auth.js, provider OAuth, AWS, and Push environment variables securely. Grant the app only the required DynamoDB/KMS permissions; never expose server credentials through `NEXT_PUBLIC_*` or commit secrets.
+- [ ] Preserve the VAPID key pair and set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, and `WEB_PUSH_TRIGGER_SECRET` on the deployed app. Only the VAPID public key may be public.
+- [ ] Update the canonical app URL and Strava/Garmin OAuth callback settings for the final origin. Keep provider ingestion webhooks pointing to their managed AWS endpoints; verify login and account linking after the switch.
+- [ ] Prepare updated Push, Strava worker, and Garmin worker bundles when authorized. Provision Terraform Push resources with `enable_web_push = true`, `web_push_processing_enabled = false`, and `web_push_endpoint = "https://<public-app-host>/api/push/workout"`; review the plan before applying.
+- [ ] Ensure the Push endpoint is reachable from AWS without interactive login or hosting deployment protection, while retaining its server-to-server Bearer authentication. It must use the same DynamoDB table and user identities as the app storing subscriptions.
+- [ ] Populate the KMS-encrypted Secrets Manager secret identified by `web_push_secret_arn` with `{"web_push_trigger_secret":"<same value as the app WEB_PUSH_TRIGGER_SECRET>"}` outside Terraform. Never store its value in Terraform variables/state, source code, logs, or browser code.
+- [ ] After configuring the app and secret, enable `web_push_processing_enabled = true` and the relevant provider processing flag, review the plan, and deploy. Verify the provider worker receives `WEB_PUSH_ENABLED = "true"` and the Push stream mapping is enabled.
+- [ ] Re-enable Push subscriptions on the final app origin; subscriptions from localhost, preview URLs, or a previous domain do not transfer automatically. On iOS, verify the installed Home Screen PWA and user-gesture permission flow; on macOS, verify browser/system notification permissions and Focus settings.
+- [ ] Verify production chat streaming and background memory persistence, then a new webhook workout through atomic Push job creation, Lambda delivery, and notification click to `/chat?sessionId=...`. Verify Strava precedence, no notifications for history/imports/edits, retry/deduplication behavior, expired subscriptions, and failure queue recovery. A local `showNotification()` check alone does not verify remote Web Push.
+- [ ] Follow the detailed deployment and recovery procedure in [the Web Push guide](../app/api/push/README.md). Mark this stage complete only after the end-to-end checks pass; do not send historical workouts retroactively.

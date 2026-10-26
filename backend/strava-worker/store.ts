@@ -203,6 +203,8 @@ export function createWorkerStore(
         activity,
         "WEBHOOK",
         true,
+        "strava",
+        process.env.WEB_PUSH_ENABLED === "true" && event.aspect_type === "create",
       );
     },
 

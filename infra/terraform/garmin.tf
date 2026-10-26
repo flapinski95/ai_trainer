@@ -93,7 +93,7 @@ resource "aws_lambda_function" "garmin_worker" {
   memory_size                    = 512
   reserved_concurrent_executions = 1
   environment {
-    variables = { DYNAMODB_TABLE_NAME = module.dynamodb.table_name, DYNAMODB_KMS_KEY_ARN = module.dynamodb.kms_key_arn, GARMIN_OAUTH_SECRET_ARN = aws_secretsmanager_secret.garmin_oauth[0].arn }
+    variables = { DYNAMODB_TABLE_NAME = module.dynamodb.table_name, DYNAMODB_KMS_KEY_ARN = module.dynamodb.kms_key_arn, GARMIN_OAUTH_SECRET_ARN = aws_secretsmanager_secret.garmin_oauth[0].arn, WEB_PUSH_ENABLED = tostring(var.enable_web_push && var.web_push_processing_enabled) }
   }
   depends_on = [aws_iam_role_policy.garmin]
 }

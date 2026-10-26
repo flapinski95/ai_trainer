@@ -72,9 +72,9 @@ npm run build
 `build:web` compiles Next.js; `build` bundles both webhook and worker Lambdas.
 Use `npm start` for the built web application. No frontend hosting is provisioned by
 Terraform yet. The Next.js server requires `dynamodb:GetItem`, `dynamodb:BatchGetItem`,
-`dynamodb:PutItem`, `dynamodb:DeleteItem`, `dynamodb:TransactWriteItems`, and
+`dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`, `dynamodb:ConditionCheckItem`, and
 `dynamodb:Query` on the app table and `GSI1`, plus `kms:Encrypt` and `kms:Decrypt`
-on its KMS key
+and `kms:GenerateDataKey` on its KMS key
 (and the DynamoDB SSE permissions needed by that execution identity). For production,
 use a dedicated execution role with scoped permissions, not the personal administrator
 profile. Keep production secrets in the hosting platform's secret storage.
@@ -85,6 +85,22 @@ using the internal user ID and provider as encryption context; settings only dis
 whether a key exists. Chat sessions and ordered messages use `CHAT#<sessionId>` and
 `MSG#<sessionId>#<timestamp>#<messageId>` sort keys. Message writes update the session
 count and timestamp in the same DynamoDB transaction.
+
+The **Trener AI** panel streams replies using the selected provider's saved key. The
+key is decrypted only on the server and is never sent to the browser. Each request
+includes the last six messages, up to five recent workouts from the selected activity
+source, lifetime training totals, and the latest Garmin daily metrics when Health
+Export permission is active. Provider failures return a generic message without
+exposing upstream error details.
+
+The model picker offers current text models: GPT-6 Astra, GPT-6.1 Sol, and GPT-6 Luna;
+Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, and Fable 5.1; Gemini 4 Argon, 3.8 Flash,
+3.6 Flash, and 3.5 Flash-Lite. The API accepts only model IDs in the corresponding
+provider catalog. Catalogs should be reviewed against the providers' [OpenAI model
+list](https://developers.openai.com/api/docs/models), [Anthropic model
+overview](https://platform.claude.com/docs/en/docs/about-claude/models/overview), and
+[Gemini API model list](https://ai.google.dev/gemini-api/docs/models) as providers
+change availability.
 
 After a successful callback, KMS encrypts the access/refresh-token pair using the
 internal user ID and provider as encryption context. A DynamoDB transaction updates
@@ -141,6 +157,60 @@ does not block a connected Strava account. Missing Strava activities are not fil
 with Garmin ones while Strava is active. This is source selection, not probabilistic
 cross-provider activity matching. Garmin workout duration is displayed as elapsed
 training time, not claimed to be measured moving time.
+
+### Manual Garmin History Import
+
+In **Profil / Ustawienia**, upload a Garmin Connect GDPR `.zip`, a `.fit` activity,
+or a health `.csv` / `.json`. The parser reads original activities under
+`DI_CONNECT/DI-Connect-Uploaded-Files` and health records under
+`DI_CONNECT/DI-Connect-User` (also `DI-Connect-Wellness`). Nested ZIP archives retain
+their parent directory context and are supported up to four
+archive levels. The authenticated, same-origin `POST /api/garmin/import` endpoint
+accepts at most 25 MB uploaded, 100 MB expanded, 1,000 archive entries and 1,000
+workouts, with at most 10 MB per FIT file. Hosting request-size and execution-time
+limits must also permit the upload; the route allows up to 300 seconds.
+
+The official Garmin FIT SDK validates file integrity and first decodes lightweight
+session summaries. Workouts starting within the last **90 days** are eligible for
+detailed import, using the same inclusive time boundary as Strava history sync.
+There is no workout count limit within this window. Eligible FIT sessions retain decoded
+records, laps, zones and all other messages plus the original FIT bytes. Telemetry
+is encrypted with KMS and split into versioned segments under
+`TELEMETRY#GARMIN#<activityId>`; `TELEMETRY_INDEX#GARMIN#<activityId>` indexes the cache.
+Telemetry outside the 90-day window is evicted during import, while lightweight per-workout metrics
+(distance, time, average speed/power and elevation) and `SUMMARY#GARMIN#...` aggregates
+remain. Each decoded detailed payload is limited to 64 MB. A per-user import lease
+serializes cache maintenance. Older separate imports cannot displace newer details.
+
+An archive workout is skipped if its normalized UTC start timestamp already belongs
+to Strava or Garmin PUSH, even if its sport or provider ID differs. The common writer
+also records `WORKOUT_TIMESTAMP#<timestamp>` protection atomically for new Strava and
+Garmin PUSH writes. Re-imported manual sessions reuse their IDs and do not increment
+totals. A per-user start-time/sport identity links accepted FIT sessions to later
+Garmin updates; provider aliases preserve deletion handling. If an import stops after partial writes,
+upload the same archive again to finish. A successful import opens a refreshed diary.
+Manual import requires an application session but not Garmin OAuth. Strava retains
+priority when connected, so the diary never combines duplicate provider histories.
+
+The recovery panel reads `USER#<userId>` / `METRIC#<date>` manifests and decrypts
+their existing KMS-encrypted artifacts. Latest-date selection uses a strongly
+consistent table query, excluding encrypted chunks and following pagination, rather
+than waiting for GSI propagation. While visible, the panel refreshes every five
+seconds and immediately on focus; it stops polling when hidden or unmounted.
+Missing data links to the import form; transient failures preserve the last values.
+Daily HRV, Body Battery, sleep score/duration and resting heart rate are read from
+nested JSON or BOM/quoted CSV with comma, semicolon or tab delimiters. Health-only
+archives are valid. Invalid measurements are omitted rather than fabricated, and
+files without recognized health fields are reported in the skipped-file count.
+Imports merge into the same KMS-encrypted `METRIC#<date>` records; PUSH sources always
+take precedence over archived values. Without Health permission, the API exposes only
+the imported source values, never merged PUSH values. Activity FIT files alone still
+do not supply daily recovery history. Garmin exports vary by product/version; unknown
+field layouts need an anonymized sample before adding a verified mapping.
+
+The Garmin import and Strava history processor share the same 90-day time-window
+predicate. Strava uses it when fetching missing summary fields; Garmin uses it for
+retaining FIT telemetry. Strava does not currently persist full telemetry streams.
 
 ### Garmin PUSH Deployment
 

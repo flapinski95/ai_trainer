@@ -34,3 +34,14 @@ test("missing and invalid telemetry remains absent rather than zero or a guessed
   assert.equal(calendarDateSchema.safeParse("2026-02-30").success, false);
   assert.equal(projectDailyMetric("futureSummary", { userId: "garmin", calendarDate: date, value: 5 }, 1), null);
 });
+
+test("archived metrics fill gaps but never replace PUSH fields in either arrival order", () => {
+  const archive = { date, type: "import", receivedAt: 0, values: { restingHeartRate: 70, hrvLastNightAverage: 60 } };
+  const live = projectDailyMetric("dailies", { userId: "garmin", calendarDate: date, restingHeartRateInBeatsPerMinute: 48 }, 100)!;
+  for (const metric of [mergeDailyMetric(mergeDailyMetric(null, live), archive), mergeDailyMetric(mergeDailyMetric(null, archive), live)]) {
+    assert.equal(metric?.values?.restingHeartRate, 48);
+    assert.equal(metric?.values?.hrvLastNightAverage, 60);
+  }
+  const updated = projectDailyMetric("dailies", { userId: "garmin", calendarDate: date, restingHeartRateInBeatsPerMinute: 47 }, 200)!;
+  assert.equal(mergeDailyMetric(mergeDailyMetric(mergeDailyMetric(null, live), archive), updated)?.values?.restingHeartRate, 47);
+});

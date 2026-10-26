@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { StravaRequestError } from "./processor";
 import type { RateGate } from "../history/rate-limit";
+import { stravaZoneDistributions } from "../workouts/telemetry";
 
 const tokenResponse = z.object({
   access_token: z.string().min(1),
@@ -26,8 +27,20 @@ export function createStravaClient(
   }
 
   return {
-    fetchActivity: (id: number, token: string) =>
-      read(`activities/${id}`, token),
+    fetchActivity: async (id: number, token: string) => {
+      const activity = await read(`activities/${id}`, token);
+      if (!activity || typeof activity !== "object") return activity;
+      const hasHeartRate = "has_heartrate" in activity && activity.has_heartrate === true;
+      const hasPower = "device_watts" in activity && activity.device_watts === true;
+      if (!hasHeartRate && !hasPower) return activity;
+      try {
+        const zones = await read(`activities/${id}/zones`, token);
+        return { ...activity, ...stravaZoneDistributions(zones) };
+      } catch (error) {
+        if (error instanceof StravaRequestError && [402, 403, 404].includes(error.status)) return activity;
+        throw error;
+      }
+    },
     fetchAthlete: (token: string) => read("athlete", token),
     listActivities: (
       token: string,

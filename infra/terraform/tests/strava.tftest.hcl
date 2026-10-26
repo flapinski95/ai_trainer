@@ -61,13 +61,16 @@ variables {
   enable_garmin_integration        = false
   garmin_processing_enabled        = false
   garmin_webhook_token             = null
+  enable_web_push                  = false
+  web_push_processing_enabled      = false
+  web_push_endpoint                = null
 }
 
 run "disabled_by_default" {
   command = plan
 
   assert {
-    condition     = length(aws_lambda_function.strava_webhook) == 0 && length(module.webhooks) == 0 && length(aws_lambda_function.strava_worker) == 0
+    condition     = length(aws_lambda_function.strava_webhook) == 0 && length(module.webhooks) == 0 && length(aws_lambda_function.strava_worker) == 0 && length(aws_lambda_function.push_worker) == 0
     error_message = "The default configuration must not deploy webhook infrastructure."
   }
 }
@@ -294,4 +297,74 @@ run "garmin_requires_separate_webhook_secret" {
   command = plan
   variables { enable_garmin_integration = true }
   expect_failures = [aws_lambda_function.garmin_ingress[0]]
+}
+
+run "push_provisioned_but_paused" {
+  command = apply
+  variables {
+    enable_strava_worker   = true
+    strava_subscription_id = 789
+    enable_web_push        = true
+    web_push_endpoint      = "https://trainer.example.com/api/push/workout"
+  }
+  assert {
+    condition = (
+      !aws_lambda_event_source_mapping.push_worker[0].enabled &&
+      aws_lambda_function.strava_worker[0].environment[0].variables["WEB_PUSH_ENABLED"] == "false" &&
+      aws_lambda_function.push_worker[0].runtime == "nodejs22.x" &&
+      aws_lambda_function.push_worker[0].timeout == 60 &&
+      aws_lambda_function.push_worker[0].reserved_concurrent_executions == 1 &&
+      aws_sqs_queue.push_worker_failures[0].sqs_managed_sse_enabled
+    )
+    error_message = "Push must remain paused with bounded concurrency and encrypted failures until explicitly activated."
+  }
+  assert {
+    condition = (
+      aws_secretsmanager_secret.web_push[0].kms_key_id == module.dynamodb.kms_key_arn &&
+      aws_lambda_function.push_worker[0].environment[0].variables["WEB_PUSH_SECRET_ARN"] == aws_secretsmanager_secret.web_push[0].arn &&
+      !contains(keys(aws_lambda_function.push_worker[0].environment[0].variables), "WEB_PUSH_TRIGGER_SECRET") &&
+      anytrue([for statement in jsondecode(aws_iam_role_policy.push_worker[0].policy).Statement :
+        contains(statement.Action, "secretsmanager:GetSecretValue") && statement.Resource == aws_secretsmanager_secret.web_push[0].arn
+      ])
+    )
+    error_message = "The Push secret must stay in KMS-backed Secrets Manager with access restricted to its own ARN."
+  }
+}
+
+run "push_processing_enabled" {
+  command = plan
+  variables {
+    enable_garmin_integration   = true
+    garmin_webhook_token        = "test-only-garmin-webhook-token-at-least-43-characters"
+    enable_web_push             = true
+    web_push_processing_enabled = true
+    web_push_endpoint           = "https://trainer.example.com/api/push/workout"
+  }
+  assert {
+    condition = (
+      aws_lambda_event_source_mapping.push_worker[0].enabled &&
+      aws_lambda_event_source_mapping.push_worker[0].batch_size == 1 &&
+      aws_lambda_event_source_mapping.push_worker[0].maximum_retry_attempts == 10 &&
+      aws_lambda_event_source_mapping.push_worker[0].maximum_record_age_in_seconds == 86400 &&
+      aws_lambda_event_source_mapping.push_worker[0].function_response_types == toset(["ReportBatchItemFailures"]) &&
+      aws_lambda_function.garmin_worker[0].environment[0].variables["WEB_PUSH_ENABLED"] == "true"
+    )
+    error_message = "Push must support Garmin-only deployments with explicit activation and bounded partial-batch retries."
+  }
+}
+
+run "push_rejects_local_endpoint" {
+  command = plan
+  variables { web_push_endpoint = "http://localhost:3000/api/push/workout" }
+  expect_failures = [var.web_push_endpoint]
+}
+
+run "push_requires_public_endpoint" {
+  command = plan
+  variables {
+    enable_strava_worker   = true
+    strava_subscription_id = 789
+    enable_web_push        = true
+  }
+  expect_failures = [aws_lambda_function.push_worker[0]]
 }

@@ -75,6 +75,29 @@ variable "strava_worker_processing_enabled" {
   default     = false
 }
 
+variable "enable_web_push" {
+  description = "Provision the workout Push delivery Lambda, secret container and failure queue."
+  type        = bool
+  default     = false
+}
+
+variable "web_push_processing_enabled" {
+  description = "Enqueue and deliver new workout Push jobs after populating the Push secret and deploying the HTTPS app."
+  type        = bool
+  default     = false
+}
+
+variable "web_push_endpoint" {
+  description = "Public HTTPS app endpoint ending in /api/push/workout, without credentials or query parameters."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.web_push_endpoint == null ? true : can(regex("^https://[^/?#@:]+/api/push/workout$", var.web_push_endpoint)) && !can(regex("^https://(localhost|127\\.0\\.0\\.1|[^/]+\\.localhost)/", var.web_push_endpoint))
+    error_message = "Use a publicly reachable HTTPS /api/push/workout URL without credentials, ports or query parameters; localhost cannot be reached from AWS."
+  }
+}
+
 variable "strava_subscription_id" {
   description = "ID returned by Strava when registering the webhook subscription. POST ingestion stays unavailable until configured."
   type        = number

@@ -45,3 +45,16 @@ output "strava_worker_function_name" {
 output "strava_worker_failure_queue_url" {
   value = try(aws_sqs_queue.strava_worker_failures[0].url, null)
 }
+
+output "web_push_secret_arn" {
+  description = "Populate web_push_trigger_secret outside Terraform with the app WEB_PUSH_TRIGGER_SECRET."
+  value       = try(aws_secretsmanager_secret.web_push[0].arn, null)
+}
+
+output "push_worker_function_name" {
+  value = try(aws_lambda_function.push_worker[0].function_name, null)
+}
+
+output "push_worker_failure_queue_url" {
+  value = try(aws_sqs_queue.push_worker_failures[0].url, null)
+}

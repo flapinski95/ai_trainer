@@ -130,6 +130,7 @@ resource "aws_lambda_function" "strava_worker" {
       DYNAMODB_KMS_KEY_ARN    = module.dynamodb.kms_key_arn
       STRAVA_OAUTH_SECRET_ARN = aws_secretsmanager_secret.strava_oauth[0].arn
       STRAVA_SUBSCRIPTION_ID  = var.strava_subscription_id == null ? "" : tostring(var.strava_subscription_id)
+      WEB_PUSH_ENABLED        = tostring(var.enable_web_push && var.web_push_processing_enabled)
     }
   }
 

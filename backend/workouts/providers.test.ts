@@ -30,8 +30,10 @@ test("Garmin-only diary reads Garmin records and never returns Strava duplicates
   const store = createWorkoutStore(
     {
       query: async (command) => {
+        assert.equal(command.input.IndexName, undefined);
+        assert.equal(command.input.ConsistentRead, true);
         assert.equal(
-          command.input.ExpressionAttributeValues?.[":providerKey"]?.S,
+          command.input.ExpressionAttributeValues?.[":activity"]?.S,
           "ACTIVITY#GARMIN#",
         );
         return { Items: [marshall(garmin), marshall(strava)] };
@@ -46,7 +48,7 @@ test("Garmin-only diary reads Garmin records and never returns Strava duplicates
   assert.equal(result.length, 1);
   assert.equal(result[0]?.provider, "garmin");
 });
-test("provider filtering follows index pages instead of hiding older selected-source workouts", async () => {
+test("Garmin history follows consistent table pages instead of hiding older workouts", async () => {
   let calls = 0;
   const garmin = {
     ...metrics,

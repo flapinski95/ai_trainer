@@ -92,6 +92,7 @@ export function mergeDailyMetric(current: DailyMetric | null, fragment: DailyFra
     receivedAt: fragment.receivedAt, coverageEnd: fragment.coverageEnd, summaryId: fragment.summaryId,
     values: { ...existing?.values, ...fragment.values },
   } };
-  const values = Object.assign({}, ...Object.values(sources).map((source) => source.values)) as DailyValues;
+  const values = Object.assign({}, sources.import?.values ?? {},
+    ...Object.entries(sources).filter(([type]) => type !== "import").map(([, source]) => source.values)) as DailyValues;
   return dailyMetricSchema.parse({ date: fragment.date, provider: "garmin", sources, values });
 }

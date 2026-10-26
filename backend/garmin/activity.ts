@@ -11,6 +11,8 @@ const summarySchema = z.object({
   totalElevationGainInMeters: z.number().nonnegative().optional(),
   averageHeartRateInBeatsPerMinute: z.number().positive().optional(),
   maxHeartRateInBeatsPerMinute: z.number().positive().optional(),
+  averagePowerInWatts: z.number().nonnegative().optional(),
+  maxPowerInWatts: z.number().nonnegative().optional(),
 });
 export function normalizeGarminActivity(record: GarminRecord) {
   const source = record.summary === undefined ? record : record.summary;
@@ -39,6 +41,8 @@ export function normalizeGarminActivity(record: GarminRecord) {
       total_elevation_gain: summary.totalElevationGainInMeters,
       average_heartrate: summary.averageHeartRateInBeatsPerMinute,
       max_heartrate: summary.maxHeartRateInBeatsPerMinute,
+      average_watts: summary.averagePowerInWatts,
+      max_watts: summary.maxPowerInWatts,
     }),
   };
 }

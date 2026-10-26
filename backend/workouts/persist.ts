@@ -30,10 +30,47 @@ export function createWorkoutWriter(
     activityId: number | string,
     eventTime: number,
     incoming: WorkoutMetrics | null,
-    source: "HISTORY" | "WEBHOOK",
+    source: "HISTORY" | "WEBHOOK" | "IMPORT",
     detail = false,
     provider: Provider = "strava",
+    notify = false,
   ) => {
+    if (source === "IMPORT" && provider !== "garmin")
+      throw new Error("Manual import is only supported for Garmin");
+    const history = source !== "WEBHOOK";
+    const timestampKey = incoming ? {
+      PK: `USER#${connection.userId}`, SK: `WORKOUT_TIMESTAMP#${new Date(incoming.start_date).toISOString()}`,
+    } : null;
+    if (source === "IMPORT" && timestampKey) {
+      const existing = await dependencies.get(new GetItemCommand({
+        TableName: tableName, Key: marshall(timestampKey), ConsistentRead: true,
+      }));
+      if (existing.Item?.hasStrava?.BOOL || existing.Item?.hasGarminPush?.BOOL) return false;
+    }
+    const alias = provider === "garmin" ? {
+      PK: `USER#${connection.userId}`, SK: `WORKOUT_ALIAS#GARMIN#${activityId}`,
+    } : null;
+    let missingLink = false;
+    if (alias) {
+      const existing = await dependencies.get(new GetItemCommand({
+        TableName: tableName, Key: marshall(alias), ConsistentRead: true,
+      }));
+      if (existing.Item?.entityType?.S === "WORKOUT_ALIAS" && existing.Item.activityId?.S)
+        activityId = existing.Item.activityId.S;
+      else if (incoming) missingLink = true;
+    }
+    const identity = provider === "garmin" && incoming ? {
+      PK: `USER#${connection.userId}`,
+      SK: `WORKOUT_IDENTITY#GARMIN#${new Date(incoming.start_date).toISOString()}#${incoming.sport_type}`,
+    } : null;
+    if (identity) {
+      const existing = await dependencies.get(new GetItemCommand({
+        TableName: tableName, Key: marshall(identity), ConsistentRead: true,
+      }));
+      const canonical = existing.Item?.entityType?.S === "WORKOUT_IDENTITY" ? existing.Item.activityId?.S : undefined;
+      if (canonical) activityId = canonical;
+      else missingLink = true;
+    }
     const key = {
       PK: `USER#${connection.userId}`,
       SK: `ACTIVITY#${provider.toUpperCase()}#${activityId}`,
@@ -52,7 +89,7 @@ export function createWorkoutWriter(
       Number(previous.eventTime) > eventTime
     )
       return false;
-    if (previous && source === "HISTORY" && previous.status === "DELETED")
+    if (previous && history && previous.status === "DELETED")
       return false;
     const oldParsed =
       previous?.status === "ACTIVE"
@@ -62,8 +99,8 @@ export function createWorkoutWriter(
     if (previous?.status === "ACTIVE" && !oldActivity)
       throw new Error("Stored workout cannot be safely aggregated");
     let activity = incoming;
-    let savedSource = source;
-    if (source === "HISTORY" && previous) {
+    let savedSource: "HISTORY" | "WEBHOOK" = history ? "HISTORY" : "WEBHOOK";
+    if (history && previous) {
       if (previous.source !== "HISTORY") {
         if (previous.summaryVersion === 1) return false;
         activity = oldActivity;
@@ -78,7 +115,8 @@ export function createWorkoutWriter(
       }
     }
     const hash = activity ? fingerprint(activity) : "DELETED";
-    if (previous?.summaryVersion === 1 && previous.metricsHash === hash)
+    const detailChanged = source === "IMPORT" && previous?.detailLevel !== (detail ? "DETAIL" : "SUMMARY");
+    if (previous?.summaryVersion === 1 && previous.metricsHash === hash && !missingLink && !detailChanged)
       return false;
     const delta = new Map<string, Contribution>();
     const add = (entry: Contribution, direction: number) => {
@@ -111,10 +149,12 @@ export function createWorkoutWriter(
       provider,
       activityId: String(activityId),
       eventTime:
-        source === "HISTORY" ? Number(previous?.eventTime ?? 0) : eventTime,
+        history ? Number(previous?.eventTime ?? 0) : eventTime,
       source: savedSource,
       detailLevel:
-        detail || previous?.detailLevel === "DETAIL" ? "DETAIL" : "SUMMARY",
+        source === "IMPORT" ? detail ? "DETAIL" : "SUMMARY"
+          : detail || previous?.detailLevel === "DETAIL" ? "DETAIL" : "SUMMARY",
+      ...(source === "IMPORT" || previous?.manualImport ? { manualImport: true } : {}),
       status: activity ? "ACTIVE" : "DELETED",
       summaryVersion: 1,
       metricsHash: hash,
@@ -147,7 +187,11 @@ export function createWorkoutWriter(
     await dependencies.transact(
       new TransactWriteItemsCommand({
         TransactItems: [
-          {
+          ...(source === "IMPORT" && timestampKey ? [{ ConditionCheck: {
+            TableName: tableName, Key: marshall(timestampKey),
+            ConditionExpression: "attribute_not_exists(hasStrava) AND attribute_not_exists(hasGarminPush)",
+          } }] : []),
+          ...(source === "IMPORT" ? [] : [{
             ConditionCheck: {
               TableName: tableName,
               Key: marshall({
@@ -162,8 +206,34 @@ export function createWorkoutWriter(
                 ":tokens": connection.encryptedTokens,
               }),
             },
-          },
+          }]),
+          ...(alias && incoming ? [{ Put: {
+            TableName: tableName,
+            Item: marshall({ ...alias, entityType: "WORKOUT_ALIAS", activityId: String(activityId) }),
+            ConditionExpression: "attribute_not_exists(PK) OR activityId = :activityId",
+            ExpressionAttributeValues: marshall({ ":activityId": String(activityId) }),
+          } }] : []),
+          ...(identity ? [{ Put: {
+            TableName: tableName,
+            Item: marshall({ ...identity, entityType: "WORKOUT_IDENTITY", activityId: String(activityId) }),
+            ConditionExpression: "attribute_not_exists(PK) OR activityId = :activityId",
+            ExpressionAttributeValues: marshall({ ":activityId": String(activityId) }),
+          } }] : []),
           { Put: write },
+          ...(notify && source === "WEBHOOK" && !previous && activity ? [{ Put: {
+            TableName: tableName,
+            Item: marshall({
+              PK: key.PK,
+              SK: `PUSH_JOB#${provider.toUpperCase()}#${activityId}`,
+              entityType: "PUSH_WORKOUT_JOB",
+              userId: connection.userId,
+              provider,
+              activityId: String(activityId),
+              state: "QUEUED",
+              createdAt: now,
+            }),
+            ConditionExpression: "attribute_not_exists(PK)",
+          } }] : []),
           ...[...delta.values()]
             .filter((entry) =>
               [
@@ -197,6 +267,12 @@ export function createWorkoutWriter(
                 }),
               },
             })),
+          ...(timestampKey && (provider === "strava" || source === "WEBHOOK") ? [{ Update: {
+            TableName: tableName, Key: marshall(timestampKey),
+            UpdateExpression: "SET entityType = :type, #provider = :present",
+            ExpressionAttributeNames: { "#provider": provider === "strava" ? "hasStrava" : "hasGarminPush" },
+            ExpressionAttributeValues: marshall({ ":type": "WORKOUT_TIMESTAMP", ":present": true }),
+          } }] : []),
         ],
       }),
     );

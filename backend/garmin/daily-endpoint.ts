@@ -5,6 +5,7 @@ type Dependencies = {
   session: () => Promise<{ userId: string } | null>;
   connection: (userId: string) => Promise<{ active: boolean; scopes: string[] } | null>;
   read: ReturnType<typeof createDailyMetricReader>;
+  readImported?: ReturnType<typeof createDailyMetricReader>;
 };
 export function createDailyMetricEndpoint(dependencies: Dependencies) {
   return async (request: Request) => {
@@ -17,7 +18,11 @@ export function createDailyMetricEndpoint(dependencies: Dependencies) {
       const date = parameters.get("date");
       if (date !== null && !calendarDateSchema.safeParse(date).success) return reply({ error: "Invalid calendar date" }, 400);
       const connection = await dependencies.connection(session.userId);
-      if (!connection?.active || !connection.scopes.includes("HEALTH_EXPORT")) return reply({ error: "Garmin Health permission required" }, 403);
+      if (!connection?.active || !connection.scopes.includes("HEALTH_EXPORT")) {
+        if (!dependencies.readImported) return reply({ error: "Garmin Health permission required" }, 403);
+        const imported = await dependencies.readImported(session.userId, date ?? undefined);
+        return imported ? reply(imported, 200) : reply({ error: "No imported daily metric" }, 404);
+      }
       const metric = await dependencies.read(session.userId, date ?? undefined);
       return metric ? reply(metric, 200) : reply({ error: "No daily metric received" }, 404);
     } catch (error) {
