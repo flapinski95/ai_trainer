@@ -1,6 +1,12 @@
-aws_region                       = "eu-central-1"
+aws_region                       = "eu-north-1"
 name_prefix                      = "ai-trainer"
 environment                      = "dev"
-strava_webhook_lambda_arn        = "arn:aws:lambda:eu-central-1:123456789012:function:ai-trainer-strava-webhook"
-garmin_webhook_lambda_arn        = "arn:aws:lambda:eu-central-1:123456789012:function:ai-trainer-garmin-webhook"
+terraform_admin_iam_user         = "lapinski-cli"
+webhook_lambda_arns              = null
+enable_strava_webhook            = false
+enable_strava_worker             = false
+enable_garmin_integration        = false
+garmin_processing_enabled        = false
+strava_worker_processing_enabled = false
+strava_subscription_id           = null
 dynamodb_deletion_protection_enabled = true

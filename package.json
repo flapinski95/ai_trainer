@@ -1,0 +1,39 @@
+{
+  "name": "ai-trainer",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "start": "next start --hostname 127.0.0.1",
+    "build:web": "next build",
+    "test": "tsx --test backend/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run build:webhook && npm run build:worker && npm run build:garmin",
+    "build:webhook": "esbuild backend/strava-webhook/handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/strava-webhook/index.js",
+    "build:worker": "esbuild backend/strava-worker/handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/strava-worker/index.js",
+    "build:garmin": "esbuild backend/garmin/ingress.ts backend/garmin/worker.ts --bundle --platform=node --target=node22 --format=cjs --outdir=dist/garmin"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/aws-lambda": "^8.10.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "@aws-sdk/client-kms": "^3.1156.0",
+    "@aws-sdk/client-secrets-manager": "^3.1156.0",
+    "@aws-sdk/util-dynamodb": "^3.996.9",
+    "lucide-react": "^1.61.0",
+    "next": "^16.4.3",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^terraform -chdir=infra/terraform fmt -recursive && terraform -chdir=infra/terraform validate && terraform -chdir=infra/terraform test$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

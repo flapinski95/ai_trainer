@@ -1,3 +1,7 @@
+locals {
+  resource_prefix = "${var.name_prefix}-${var.environment}"
+}
+
 resource "aws_kms_key" "dynamodb" {
   description             = "Encryption key for ${local.resource_prefix} DynamoDB table"
   enable_key_rotation     = true
@@ -21,6 +25,8 @@ resource "aws_dynamodb_table" "app" {
   hash_key                    = "PK"
   range_key                   = "SK"
   deletion_protection_enabled = var.dynamodb_deletion_protection_enabled
+  stream_enabled              = var.stream_enabled
+  stream_view_type            = var.stream_enabled ? "NEW_IMAGE" : null
 
   attribute {
     name = "PK"
@@ -44,13 +50,26 @@ resource "aws_dynamodb_table" "app" {
 
   global_secondary_index {
     name            = "GSI1"
-    hash_key        = "GSI1PK"
-    range_key       = "GSI1SK"
     projection_type = "KEYS_ONLY"
+
+    key_schema {
+      attribute_name = "GSI1PK"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "GSI1SK"
+      key_type       = "RANGE"
+    }
   }
 
   point_in_time_recovery {
     enabled = true
+  }
+
+  ttl {
+    attribute_name = "ttlEpoch"
+    enabled        = true
   }
 
   server_side_encryption {
