@@ -72,11 +72,19 @@ npm run build
 `build:web` compiles Next.js; `build` bundles both webhook and worker Lambdas.
 Use `npm start` for the built web application. No frontend hosting is provisioned by
 Terraform yet. The Next.js server requires `dynamodb:GetItem`, `dynamodb:BatchGetItem`,
-and the item-level write permissions used by its DynamoDB transaction on the app table,
-plus `dynamodb:Query` on `GSI1` and `kms:Encrypt` on its KMS key
+`dynamodb:PutItem`, `dynamodb:DeleteItem`, `dynamodb:TransactWriteItems`, and
+`dynamodb:Query` on the app table and `GSI1`, plus `kms:Encrypt` and `kms:Decrypt`
+on its KMS key
 (and the DynamoDB SSE permissions needed by that execution identity). For production,
 use a dedicated execution role with scoped permissions, not the personal administrator
 profile. Keep production secrets in the hosting platform's secret storage.
+
+Logged-in users can save OpenAI, Anthropic, and Google Gemini API keys from the
+**Klucze AI** section of the dashboard. Keys are encrypted with the DynamoDB KMS key
+using the internal user ID and provider as encryption context; settings only display
+whether a key exists. Chat sessions and ordered messages use `CHAT#<sessionId>` and
+`MSG#<sessionId>#<timestamp>#<messageId>` sort keys. Message writes update the session
+count and timestamp in the same DynamoDB transaction.
 
 After a successful callback, KMS encrypts the access/refresh-token pair using the
 internal user ID and provider as encryption context. A DynamoDB transaction updates

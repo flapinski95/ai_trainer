@@ -8,6 +8,54 @@ import { authStore } from "@/lib/auth-store";
 import { historyStore } from "@/lib/history-store";
 import { revalidatePath } from "next/cache";
 import { garminAuthorizationRedirect } from "@/backend/auth/garmin";
+import { aiProviders } from "@/backend/ai/credentials";
+import type { AIProvider } from "@/backend/ai/credentials";
+import { aiCredentialStore } from "@/lib/ai-credential-store";
+
+function formProvider(value: FormDataEntryValue | null): AIProvider | null {
+  return typeof value === "string" && aiProviders.some((provider) => provider === value)
+    ? (value as AIProvider)
+    : null;
+}
+
+async function authenticatedUserId() {
+  const session = await auth();
+  if (!session?.user.id) redirect("/?error=authentication");
+  return session.user.id;
+}
+
+export async function saveAIKey(formData: FormData) {
+  const userId = await authenticatedUserId();
+  const provider = formProvider(formData.get("provider"));
+  const apiKey = formData.get("apiKey");
+  if (!provider || typeof apiKey !== "string") redirect("/?error=ai-key");
+  try {
+    await aiCredentialStore().set(userId, provider, apiKey);
+  } catch (error) {
+    console.error("ai_credential_save_failed", {
+      type: error instanceof Error ? error.name : "UnknownError",
+    });
+    redirect("/?error=ai-key");
+  }
+  revalidatePath("/");
+  redirect("/?key=saved");
+}
+
+export async function deleteAIKey(formData: FormData) {
+  const userId = await authenticatedUserId();
+  const provider = formProvider(formData.get("provider"));
+  if (!provider) redirect("/?error=ai-key");
+  try {
+    await aiCredentialStore().remove(userId, provider);
+  } catch (error) {
+    console.error("ai_credential_delete_failed", {
+      type: error instanceof Error ? error.name : "UnknownError",
+    });
+    redirect("/?error=ai-key");
+  }
+  revalidatePath("/");
+  redirect("/?key=removed");
+}
 
 export async function connectStrava() {
   if (!authSettings()?.strava) redirect("/?error=configuration");

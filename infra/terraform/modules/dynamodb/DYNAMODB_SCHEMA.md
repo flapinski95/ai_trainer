@@ -6,10 +6,12 @@ The table uses string partition and sort keys (`PK`, `SK`). Each item should als
 | --- | --- | --- | --- |
 | User profile | `USER#<userId>` | `PROFILE` | Athlete preferences, zones, and account settings |
 | Provider connection | `USER#<userId>` | `CONNECTION#STRAVA` or `CONNECTION#GARMIN` | Provider identifiers and OAuth connection metadata |
+| Chat session | `USER#<userId>` | `CHAT#<sessionId>` | Session title, timestamps and message count |
+| Chat message | `USER#<userId>` | `MSG#<sessionId>#<timestamp>#<messageId>` | Ordered user or assistant message for one session |
 | Strava workout | `USER#<userId>` | `ACTIVITY#STRAVA#<activityId>` | Stable activity identity for updates and deletion tombstones |
 | Health metrics | `USER#<userId>` | `HEALTH#<date>` | HRV, sleep, Body Battery, and daily recovery metrics |
 | Push subscription | `USER#<userId>` | `PUSH#<subscriptionId>` | Web Push endpoint and subscription keys |
-| BYOK credential | `USER#<userId>` | `SECRET#<provider>` | User-owned LLM API key metadata and encrypted value |
+| BYOK credential | `USER#<userId>` | `SECRET#<provider>` | User-owned LLM API key metadata and KMS-encrypted value |
 | Strava webhook inbox | `STRAVA#ATHLETE#<ownerId>` | `WEBHOOK#<sha256>` | Durable event receipt and duplicate detection before OAuth/user resolution |
 | History job | `USER#<userId>` | `SYNC#STRAVA` | Leased import cursor, page checkpoint, status and successful watermark |
 | Training aggregate | `USER#<userId>` | `SUMMARY#WEEK#<monday>#<sport>`, `SUMMARY#MONTH#<month>#<sport>`, `SUMMARY#LIFETIME#<sport>` | Idempotent per-sport volume totals |
@@ -99,3 +101,13 @@ Only counters and completed inbox rows set `ttlEpoch`; the table TTL deliberatel
 does not use OAuth's `expiresAt`. STATE retains the latest observed caps/cooldown.
 
 The table is encrypted at rest with a customer-managed KMS key. Store API keys and OAuth tokens only in secret items, never in logs or client-visible responses. For application-level isolation from principals that can read the table, encrypt those values with AWS KMS before writing them and decrypt only in the trusted backend.
+
+AI credentials use `entityType = AI_CREDENTIAL`, `provider`, `encryptedKey`,
+`encryptionVersion = 1` and `updatedAt`. KMS encryption context is
+`{ userId, provider }`. Only a trusted server-side call decrypts the key; settings
+views project provider and timestamp metadata only. Chat sessions use
+`entityType = CHAT_SESSION`, `sessionId`, `title`, `createdAt`, `updatedAt` and
+`messageCount`. Messages use `entityType = CHAT_MESSAGE`, `sessionId`, `messageId`,
+`role`, `content` and `createdAt`. Appending a message and updating its session
+timestamp/count is a DynamoDB transaction. The message sort-key prefix allows an
+ordered query scoped to one user and session.

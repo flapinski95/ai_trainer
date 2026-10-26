@@ -6,6 +6,7 @@ import {
   Check,
   CircleUserRound,
   Footprints,
+  KeyRound,
   Link2,
   ShieldCheck,
 } from "lucide-react";
@@ -20,10 +21,15 @@ import { RefreshWorkouts } from "./refresh-workouts";
 import { HistorySync, type HistoryStatus } from "./history-sync";
 import { historyStore } from "@/lib/history-store";
 import { activityProvider } from "@/backend/providers/policy";
+import { aiCredentialStore } from "@/lib/ai-credential-store";
+import { AIKeySettings } from "./ai-key-settings";
 
 export const dynamic = "force-dynamic";
 type ConnectionSummary = Awaited<
   ReturnType<ReturnType<typeof authStore>["connection"]>
+>;
+type AIKeyStatus = Awaited<
+  ReturnType<ReturnType<typeof aiCredentialStore>["status"]>
 >;
 
 const errors = new Map([
@@ -32,23 +38,27 @@ const errors = new Map([
     "Nie przyznano dostepu do aktywnosci. Polacz konto ponownie.",
   ],
   ["configuration", "Logowanie jest chwilowo niedostepne."],
+  ["ai-key", "Nie udalo sie zaktualizowac klucza AI. Sprobuj ponownie."],
 ]);
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; key?: string }>;
 }) {
   const settings = authSettings();
   const configured = Boolean(settings);
   const session = configured ? await auth() : null;
   const query = await searchParams;
   const error = typeof query.error === "string" ? query.error : undefined;
+  const keyNotice = typeof query.key === "string" ? query.key : undefined;
   let connection: Awaited<
     ReturnType<ReturnType<typeof authStore>["connection"]>
   > = null;
   let garminConnection: ConnectionSummary = null;
   let connectionError = false;
+  let aiKeys: AIKeyStatus = [];
+  let aiKeysError = false;
   if (session?.user.id) {
     try {
       const store = authStore();
@@ -58,6 +68,11 @@ export default async function Home({
       ]);
     } catch {
       connectionError = true;
+    }
+    try {
+      aiKeys = await aiCredentialStore().status(session.user.id);
+    } catch {
+      aiKeysError = true;
     }
   }
   const selectedProvider = activityProvider({
@@ -127,6 +142,11 @@ export default async function Home({
           <a className="nav-link" href="#connection">
             <Link2 size={18} /> Polaczenia
           </a>
+          {session && (
+            <a className="nav-link" href="#ai-keys">
+              <KeyRound size={18} /> Klucze AI
+            </a>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <ShieldCheck size={17} />
@@ -163,6 +183,15 @@ export default async function Home({
             <p className="notice" role="alert">
               {errors.get(error) ??
                 "Nie udalo sie zalogowac. Sprobuj ponownie."}
+            </p>
+          )}
+          {keyNotice && !error && (
+            <p className="notice notice-success" role="status">
+              {keyNotice === "saved"
+                ? "Klucz AI zostal zapisany."
+                : keyNotice === "removed"
+                  ? "Klucz AI zostal usuniety."
+                  : ""}
             </p>
           )}
 
@@ -476,6 +505,19 @@ export default async function Home({
               </div>
             </section>
           </div>
+          {session && (
+            <div className="settings-grid">
+              {aiKeysError ? (
+                <section id="ai-keys" className="ai-key-section">
+                  <p className="notice" role="alert">
+                    Nie mozna odczytac statusu kluczy AI.
+                  </p>
+                </section>
+              ) : (
+                <AIKeySettings keys={aiKeys} />
+              )}
+            </div>
+          )}
           <footer className="page-footer">
             <span>AI TRAINER</span>
             <span>Kolarstwo. Bieganie. Twoje tempo.</span>
