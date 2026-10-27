@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Activity, HeartPulse, Moon, Zap } from "lucide-react";
-import Link from "next/link";
 
 type DailyMetric = {
-  date?: string;
+  date?: string | null;
   values?: {
     hrvLastNightAverage?: number;
     bodyBattery?: number;
+    sleepDurationSeconds?: number;
     sleepScore?: number;
     restingHeartRate?: number;
   };
@@ -16,111 +16,125 @@ type DailyMetric = {
 
 export function RecoverySummary({ enabled }: { enabled: boolean }) {
   const [metric, setMetric] = useState<DailyMetric | null>(null);
-  const [message, setMessage] = useState("Wczytywanie danych...");
-  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     if (!enabled) {
       setMetric(null);
-      setUnavailable(false);
-      setMessage("");
       return;
     }
 
     let active = true;
     let pending = false;
+    let retryOnResume = false;
     let controller: AbortController | undefined;
-    setMessage("Wczytywanie danych...");
+    let interval: number | undefined;
+
+    function stopPolling() {
+      if (interval === undefined) return;
+      window.clearInterval(interval);
+      interval = undefined;
+    }
+
+    function startPolling() {
+      if (interval !== undefined) return;
+      interval = window.setInterval(() => void refresh(), 5000);
+    }
+
     async function refresh() {
       if (!active || pending || document.visibilityState === "hidden") return;
       pending = true;
       controller = new AbortController();
       const timeout = window.setTimeout(() => controller?.abort(), 10000);
       try {
-        const response = await fetch("/api/health/daily", { cache: "no-store", signal: controller.signal });
-        if ([401, 403, 404].includes(response.status)) {
-          if (active) {
-            setMetric(null);
-            setUnavailable(false);
-            setMessage("");
-          }
+        let response: Response | undefined;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          response = await fetch("/api/health/daily", {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+          });
+          if (response.status !== 401 || attempt === 2) break;
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 400 * (attempt + 1));
+          });
+        }
+        if (!response || !response.ok) {
+          if (active) setMetric(null);
+          retryOnResume = true;
+          stopPolling();
           return;
         }
-        if (!response.ok) throw new Error("metric_unavailable");
         const dailyMetric = await response.json() as DailyMetric;
-        if (active) {
-          setMetric(dailyMetric);
-          setUnavailable(false);
-          setMessage("");
-        }
+        if (active) setMetric(dailyMetric);
       } catch {
-        if (active) {
-          setUnavailable(true);
-          setMessage("Nie można odświeżyć pomiarów. Ponawianie połączenia...");
-        }
+        if (active) setMetric(null);
+        retryOnResume = true;
+        stopPolling();
       } finally {
         window.clearTimeout(timeout);
         pending = false;
       }
     }
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 5000);
-    const resume = () => void refresh();
+    startPolling();
+    const resume = () => {
+      if (!active || document.visibilityState === "hidden") return;
+      if (retryOnResume) {
+        retryOnResume = false;
+        startPolling();
+      }
+      void refresh();
+    };
     window.addEventListener("focus", resume);
     document.addEventListener("visibilitychange", resume);
 
     return () => {
       active = false;
       controller?.abort();
-      window.clearInterval(interval);
+      stopPolling();
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
     };
   }, [enabled]);
 
   const values = metric?.values;
+  const sleepDuration = values?.sleepDurationSeconds;
+  const sleepTime = sleepDuration !== undefined
+    ? `${Math.floor(sleepDuration / 3600)}h ${Math.floor((sleepDuration % 3600) / 60)}m`
+    : undefined;
+  const sleepValue = sleepTime && values?.sleepScore !== undefined
+    ? `${sleepTime} (${Math.round(values.sleepScore)}/100)`
+    : sleepTime ?? (values?.sleepScore !== undefined ? `${Math.round(values.sleepScore)}/100` : undefined);
   const items = [
-    { label: "HRV", value: values?.hrvLastNightAverage, unit: "ms", icon: HeartPulse },
-    { label: "Body Battery", value: values?.bodyBattery, unit: "/ 100", icon: Zap },
-    { label: "Sen", value: values?.sleepScore, unit: "/ 100", icon: Moon },
-    { label: "Tętno spoczynkowe", value: values?.restingHeartRate, unit: "bpm", icon: Activity },
+    { label: "HRV", value: values?.hrvLastNightAverage, unit: "ms", progressMax: 100, detail: undefined, icon: HeartPulse },
+    { label: "Body Battery", value: values?.bodyBattery, unit: "/ 100", progressMax: 100, detail: undefined, icon: Zap },
+    { label: "Sen", value: values?.sleepScore, unit: "/ 100", progressMax: 100, detail: sleepTime, icon: Moon },
+    { label: "Tętno spoczynkowe", value: values?.restingHeartRate, unit: "bpm", progressMax: 120, detail: undefined, icon: Activity },
   ];
-  const hasValues = items.some(({ value }) => value !== undefined);
-  const metricDate = metric?.date
-    ? new Intl.DateTimeFormat("pl-PL", {
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-      }).format(new Date(`${metric.date}T12:00:00Z`))
-    : "—";
 
   return (
-    <section className="recovery-panel" aria-labelledby="recovery-heading">
-      <div className="section-title">
-        <div>
-          <p className="eyebrow">GARMIN CONNECT</p>
-          <h2 id="recovery-heading">Regeneracja</h2>
-        </div>
-        <span className="muted-label">{metricDate}</span>
-      </div>
-      <dl className="recovery-metrics">
-        {items.map(({ label, value, unit, icon: Icon }) => (
-          <div className="recovery-metric" key={label}>
-            <dt><Icon size={16} />{label}</dt>
-            <dd>
-              {value === undefined ? "—" : Math.round(value)}
+    <section className="dashboard-recovery-grid" aria-label="Regeneracja z Garmin Connect">
+      {items.map(({ label, value, unit, progressMax, detail, icon: Icon }) => {
+        const progress = value === undefined
+          ? 0
+          : Math.min(100, Math.max(0, value / progressMax * 100));
+        return (
+          <article className="dashboard-recovery-card" key={label}>
+            <div className="dashboard-recovery-card-heading">
+              <span className="dashboard-recovery-icon"><Icon size={16} aria-hidden="true" /></span>
+              <h2>{label}</h2>
+            </div>
+            <p className="dashboard-recovery-value">
+              <strong>{value === undefined ? "—" : Math.round(value)}</strong>
               <span>{unit}</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {(!hasValues || unavailable) && message && <p className="recovery-message" role="status">{message}</p>}
-      {!hasValues && !message && (
-        <div className="recovery-empty">
-          <p className="recovery-message">Brak danych. Oczekiwanie na pomiar z zegarka lub wgraj plik ZIP z historią</p>
-          <Link href="/settings#garmin-import" className="recovery-import-link">Importuj historię</Link>
-        </div>
-      )}
+            </p>
+            <p className="dashboard-recovery-detail">{detail ?? ""}</p>
+            <span className="dashboard-recovery-track" aria-hidden="true">
+              <span style={{ width: `${progress}%` }} />
+            </span>
+          </article>
+        );
+      })}
     </section>
   );
 }

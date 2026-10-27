@@ -22,7 +22,6 @@ import { createGarminAccess } from "./access";
 import { createGarminProcessor } from "./processor";
 import { categorySchema, payloadSchema, garminHash } from "./payload";
 import { createWorkoutWriter } from "../workouts/persist";
-import type { Connection } from "../strava-worker/processor";
 import { createDailyMetricStore } from "./daily-store";
 
 const options = {
@@ -225,7 +224,12 @@ export async function handler(
           );
         },
         saveDailyMetric: async (connection, type, data) => {
-          await dailyMetrics.save(connection, type, data, receivedAt);
+          const saved = await dailyMetrics.save(connection, type, data, receivedAt);
+          console.info("[GARMIN WEBHOOK] daily_metric_upsert", {
+            type,
+            calendarDate: typeof data.calendarDate === "string" ? data.calendarDate : null,
+            applied: saved,
+          });
         },
         saveActivity: async (connection, id, metrics, notify) => {
           await writer(

@@ -34,7 +34,7 @@ export default async function ChatPage({ searchParams }: { searchParams: Promise
                 Nie mozna odczytac statusu kluczy AI.
               </p>
             )}
-            <ChatPanel providers={providers} initialSessionId={requestedSession.success ? requestedSession.data : undefined} />
+            <ChatPanel userId={session.user.id} providers={providers} initialSessionId={requestedSession.success ? requestedSession.data : undefined} />
           </>
         ) : (
           <>

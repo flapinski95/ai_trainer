@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import type { AIProvider } from "@/backend/ai/credentials";
 import { chatModels, defaultChatModels } from "@/backend/ai/models";
 import { readModelPreference, saveModelPreference } from "../ai-model-preferences";
+import { readAIDataPreferences } from "@/lib/ai-data-preferences";
 import { ThinkingStepper, type CoachMessage } from "./thinking-stepper";
 import styles from "./chat.module.css";
 
@@ -83,7 +84,7 @@ function toUIMessages(messages: ChatMessage[]): CoachMessage[] {
   }));
 }
 
-export function ChatPanel({ providers, initialSessionId }: { providers: AIProvider[]; initialSessionId?: string }) {
+export function ChatPanel({ providers, initialSessionId, userId }: { providers: AIProvider[]; initialSessionId?: string; userId: string }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [provider, setProvider] = useState<AIProvider>(providers[0] ?? "openai");
@@ -115,8 +116,8 @@ export function ChatPanel({ providers, initialSessionId }: { providers: AIProvid
   const messageList = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const followLatest = useRef(true);
-  const requestOptions = useRef({ sessionId, provider, modelId });
-  requestOptions.current = { sessionId, provider, modelId };
+  const requestOptions = useRef({ sessionId, provider, modelId, userId });
+  requestOptions.current = { sessionId, provider, modelId, userId };
   const [transport] = useState(() => new DefaultChatTransport<CoachMessage>({
     api: "/api/chat",
     prepareSendMessagesRequest: ({ messages: outgoingMessages, trigger, messageId }) => ({
@@ -124,6 +125,7 @@ export function ChatPanel({ providers, initialSessionId }: { providers: AIProvid
         ...(requestOptions.current.sessionId ? { sessionId: requestOptions.current.sessionId } : {}),
         provider: requestOptions.current.provider,
         modelId: requestOptions.current.modelId,
+        dataPreferences: readAIDataPreferences(requestOptions.current.userId),
         content: outgoingMessages.findLast((message) => message.role === "user")?.parts
           .filter((part) => part.type === "text").map((part) => part.text).join("") ?? "",
         ...(trigger === "regenerate-message" && messageId ? { regenerateMessageId: messageId } : {}),

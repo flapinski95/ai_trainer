@@ -11,6 +11,7 @@ import { googleFallbackModel, isChatModelForProvider } from "@/backend/ai/models
 import { providerErrorCode, providerErrorDetails, runWithGoogleFallback } from "@/backend/ai/provider-errors";
 import { aiCredentialStore } from "@/lib/ai-credential-store";
 import { chatStore } from "@/lib/chat-store";
+import { defaultAIDataPreferences, type AIDataPreferences } from "@/lib/ai-data-preferences";
 import { athleteChatContext } from "./context";
 import { extractAthleteMemory, readAthleteMemory } from "./memory";
 import type { CoachMessage } from "@/app/chat/thinking-stepper";
@@ -24,6 +25,11 @@ const requestSchema = z.object({
   modelId: z.string().min(1).max(100),
   content: z.string().trim().min(1).max(4000),
   regenerateMessageId: z.string().uuid().optional(),
+  dataPreferences: z.object({
+    recoveryMetrics: z.boolean(),
+    locationDetails: z.boolean(),
+    effortZones: z.boolean(),
+  }).optional(),
 });
 
 function modelFor(
@@ -86,7 +92,14 @@ export async function POST(request: Request) {
   if (!parsed.success)
     return Response.json({ error: "invalid_request" }, { status: 400, headers: privateHeaders });
 
-  const { sessionId, provider, modelId, content, regenerateMessageId } = parsed.data;
+  const {
+    sessionId,
+    provider,
+    modelId,
+    content,
+    regenerateMessageId,
+    dataPreferences = defaultAIDataPreferences,
+  } = parsed.data;
   if (regenerateMessageId && !sessionId)
     return Response.json({ error: "invalid_session" }, { status: 400, headers: privateHeaders });
   if (!isChatModelForProvider(provider, modelId))
@@ -114,7 +127,7 @@ export async function POST(request: Request) {
           athleteChatContext(session.user.id, () => {
             if (!abortController.signal.aborted)
               writer.write({ type: "data-thinking", id: "thinking", data: { stage: "recovery" } });
-          }),
+          }, dataPreferences as AIDataPreferences),
           readAthleteMemory(session.user.id).catch(() => ({})),
         ]);
         if (!apiKey) throw new Error("provider_key_missing");
@@ -128,7 +141,7 @@ export async function POST(request: Request) {
         if (!regeneration) await store.appendMessage(session.user.id, activeSessionId, "user", prompt);
         writer.write({ type: "data-thinking", id: "thinking", data: {
           stage: "recommendations",
-          recoveryDays: telemetry.recoveryTrend.days.filter((day) => day.values !== null).length,
+          recoveryDays: telemetry.recoveryTrend?.days.filter((day) => day.values !== null).length ?? 0,
           workouts: telemetry.recentWorkouts.length,
         } });
         let answer = "";

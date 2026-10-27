@@ -73,6 +73,11 @@ run "disabled_by_default" {
     condition     = length(aws_lambda_function.strava_webhook) == 0 && length(module.webhooks) == 0 && length(aws_lambda_function.strava_worker) == 0 && length(aws_lambda_function.push_worker) == 0
     error_message = "The default configuration must not deploy webhook infrastructure."
   }
+
+  assert {
+    condition     = output.garmin_webhook_url == null && output.garmin_webhook_urls == null && output.health_check_url == null
+    error_message = "Disabled integrations must not advertise callback or nonexistent health-check URLs."
+  }
 }
 
 run "strava_without_garmin" {
@@ -263,6 +268,8 @@ run "garmin_only_without_strava" {
       length(aws_lambda_function.strava_webhook) == 0 &&
       length(aws_lambda_function.garmin_ingress) == 1 &&
       length(aws_lambda_function.garmin_worker) == 1 &&
+      aws_lambda_function.garmin_ingress[0].function_name == "ai-trainer-dev-garmin-webhook" &&
+      aws_lambda_function.garmin_worker[0].function_name == "ai-trainer-dev-garmin-worker" &&
       aws_lambda_event_source_mapping.garmin[0].enabled == false &&
       aws_lambda_function.garmin_worker[0].timeout == 30 &&
       output.strava_webhook_url == null
@@ -271,9 +278,22 @@ run "garmin_only_without_strava" {
   }
 
   assert {
+    condition     = output.garmin_webhook_url == "https://testapi.execute-api.eu-north-1.amazonaws.com/api/webhooks/garmin/activities/${var.garmin_webhook_token}" && output.health_check_url == null
+    error_message = "The Garmin callback must include the default AWS host, secret token and activity category without inventing a health check."
+  }
+
+  assert {
+    condition = tomap(output.garmin_webhook_urls) == tomap({
+      for category in ["dailies", "sleeps", "activities"] : category => "https://testapi.execute-api.eu-north-1.amazonaws.com/api/webhooks/garmin/${category}/${var.garmin_webhook_token}"
+    })
+    error_message = "All three Garmin callback routes must expose their exact token-bearing URLs."
+  }
+
+  assert {
     condition = (
       aws_secretsmanager_secret.garmin_oauth[0].kms_key_id == module.dynamodb.kms_key_arn &&
       aws_sqs_queue.garmin_failures[0].sqs_managed_sse_enabled &&
+      aws_lambda_function.garmin_ingress[0].environment[0].variables["GARMIN_WEBHOOK_SECRET"] == var.garmin_webhook_token &&
       aws_lambda_function.garmin_ingress[0].environment[0].variables["GARMIN_WEBHOOK_TOKEN"] == var.garmin_webhook_token
     )
     error_message = "Garmin ingress and secrets must use the configured protected storage."

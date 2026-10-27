@@ -4,6 +4,18 @@ import { randomBytes } from "node:crypto";
 import { createEnvelopeEncryption } from "./encryption";
 import { chunks, payloadSchema } from "./payload";
 
+for (const summaryType of ["dailies", "sleeps", "activities"] as const) {
+  test(`Garmin ${summaryType} payloads validate record identity before processing`, () => {
+    const body = {
+      [summaryType]: [{ userId: "garmin-1", summaryId: "summary-1" }],
+    };
+    assert.deepEqual(payloadSchema.parse(body), body);
+    assert.throws(() => payloadSchema.parse({ [summaryType]: [{ userId: 123 }] }));
+    assert.throws(() => payloadSchema.parse({ [summaryType]: [{ summaryId: "missing-user" }] }));
+    assert.throws(() => payloadSchema.parse({ [summaryType]: { userId: "garmin-1" } }));
+  });
+}
+
 test("Garmin health schemas preserve all nested and future JSON fields", () => {
   const body = {
     hrv: [

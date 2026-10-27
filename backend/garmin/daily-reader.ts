@@ -15,19 +15,46 @@ export function createDailyMetricReader(dependencies: Dependencies, table: strin
     const PK = `USER#${userId}`;
     let date = requestedDate === undefined ? undefined : calendarDateSchema.parse(requestedDate);
     if (!date) {
+      const now = Date.now();
+      const cutoff = now - 36 * 60 * 60 * 1000;
+      const localDateRangeStart = new Date(cutoff - 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const localDateRangeEnd = new Date(now + 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
       let cursor: QueryCommandOutput["LastEvaluatedKey"];
+      let latestReceivedAt = 0;
       do {
         const latest = await dependencies.query(new QueryCommand({ TableName: table, ConsistentRead: true,
-          KeyConditionExpression: "PK = :user AND begins_with(SK, :metric)",
-          FilterExpression: importOnly ? "entityType = :type AND imported = :imported" : "entityType = :type",
-          ExpressionAttributeValues: marshall({ ":user": PK, ":metric": "METRIC#", ":type": "GARMIN_METRIC", ...(importOnly ? { ":imported": true } : {}) }),
+          KeyConditionExpression: importOnly
+            ? "PK = :user AND begins_with(SK, :metric)"
+            : "PK = :user AND SK BETWEEN :from AND :to",
+          FilterExpression: importOnly
+            ? "entityType = :type AND imported = :imported"
+            : "entityType = :type AND receivedAt BETWEEN :cutoff AND :now",
+          ExpressionAttributeValues: marshall({
+            ":user": PK,
+            ":type": "GARMIN_METRIC",
+            ...(importOnly
+              ? { ":metric": "METRIC#", ":imported": true }
+              : {
+                ":from": `METRIC#${localDateRangeStart}`,
+                ":to": `METRIC#${localDateRangeEnd}#~`,
+                ":cutoff": cutoff,
+                ":now": now,
+              }),
+          }),
           ScanIndexForward: false, Limit: 25, ExclusiveStartKey: cursor,
         }));
-        const item = latest.Items?.[0];
-        if (item) {
+        for (const item of latest.Items ?? []) {
           if (item.PK?.S !== PK || !item.SK?.S?.startsWith("METRIC#")) throw new Error("Metric ownership mismatch");
-          date = calendarDateSchema.parse(item.SK.S.slice("METRIC#".length));
-          break;
+          const itemDate = calendarDateSchema.parse(item.SK.S.slice("METRIC#".length));
+          if (importOnly) {
+            if (!date || itemDate > date) date = itemDate;
+            continue;
+          }
+          const receivedAt = Number(item.receivedAt?.N ?? 0);
+          if (receivedAt >= cutoff && receivedAt <= now && receivedAt > latestReceivedAt) {
+            latestReceivedAt = receivedAt;
+            date = itemDate;
+          }
         }
         cursor = latest.LastEvaluatedKey;
       } while (cursor);

@@ -53,6 +53,13 @@ resource "aws_apigatewayv2_route" "garmin_events" {
   target    = "integrations/${aws_apigatewayv2_integration.garmin[0].id}"
 }
 
+resource "aws_apigatewayv2_route" "garmin_callbacks" {
+  for_each  = var.garmin_routes_enabled && var.garmin_push_routes_enabled ? toset(["dailies", "sleeps", "activities"]) : toset([])
+  api_id    = aws_apigatewayv2_api.webhooks.id
+  route_key = "POST /api/webhooks/garmin/${each.key}/{token}"
+  target    = "integrations/${aws_apigatewayv2_integration.garmin[0].id}"
+}
+
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.webhooks.id
   name        = "$default"
@@ -75,6 +82,15 @@ resource "aws_lambda_permission" "garmin_webhook" {
   function_name = var.garmin_webhook_lambda_arn
   principal     = "apigateway.amazonaws.com"
   source_arn    = var.garmin_push_routes_enabled ? "${aws_apigatewayv2_api.webhooks.execution_arn}/*/POST/webhooks/garmin/*/*" : "${aws_apigatewayv2_api.webhooks.execution_arn}/*/POST/webhooks/garmin"
+}
+
+resource "aws_lambda_permission" "garmin_callbacks" {
+  for_each      = aws_apigatewayv2_route.garmin_callbacks
+  statement_id  = "AllowWebhookApiGatewayGarmin-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = var.garmin_webhook_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.webhooks.execution_arn}/*/POST/api/webhooks/garmin/${each.key}/*"
 }
 
 moved {

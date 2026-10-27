@@ -1,21 +1,90 @@
-import {
-  Activity,
-  ArrowUpRight,
-  Bike,
-  Footprints,
-  ShieldCheck,
-} from "lucide-react";
 import { auth } from "@/auth";
 import { authStore } from "@/lib/auth-store";
 import { authSettings } from "@/lib/server-config";
 import { recentWorkouts, workoutProvider } from "@/lib/workouts";
 import type { Workout } from "@/backend/workouts/store";
-import { RefreshWorkouts } from "./refresh-workouts";
-import { historyStore } from "@/lib/history-store";
-import { ScreenHeader } from "./screen-header";
+import { DashboardPullRefresh } from "./dashboard-pull-refresh";
 import { RecoverySummary } from "./recovery-summary";
+import { WorkoutList } from "./workout-list";
 
 export const dynamic = "force-dynamic";
+const dateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "Europe/Warsaw",
+  year: "numeric",
+});
+const metricNumber = new Intl.NumberFormat("pl-PL", {
+  maximumFractionDigits: 1,
+});
+const weekdayFormatter = new Intl.DateTimeFormat("pl-PL", {
+  timeZone: "Europe/Warsaw",
+  weekday: "short",
+});
+
+function dateKey(date: Date) {
+  const parts = dateKeyFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+function shiftDateKey(key: string, days: number) {
+  const date = new Date(`${key}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function workoutTime(workout: Workout) {
+  return workout.provider === "garmin" ? workout.elapsedTime : workout.movingTime;
+}
+
+function isRunningWorkout(workout: Workout) {
+  return /run|trail|hike/i.test(workout.sport);
+}
+
+function isCyclingWorkout(workout: Workout) {
+  return /ride|gravel|cycl|bike/i.test(workout.sport);
+}
+
+function formatPace(secondsPerKilometer: number | null) {
+  if (secondsPerKilometer === null || !Number.isFinite(secondsPerKilometer)) return null;
+  const totalSeconds = Math.round(secondsPerKilometer);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")} min/km`;
+}
+
+function summarizeWorkouts(workouts: Workout[]) {
+  const runningWorkouts = workouts.filter(isRunningWorkout);
+  const cyclingWorkouts = workouts.filter(isCyclingWorkout);
+  const average = (activities: Workout[], key: "averageHeartRate" | "averagePower") => {
+    const values = activities
+      .map((workout) => workout[key])
+      .filter((value): value is number => value !== undefined && Number.isFinite(value));
+    return values.length
+      ? Math.round(values.reduce((total, value) => total + value, 0) / values.length)
+      : null;
+  };
+  const runningDistance = runningWorkouts.reduce((total, workout) => total + workout.distance, 0);
+  const runningMovingTime = runningWorkouts.reduce((total, workout) => total + workout.movingTime, 0);
+
+  return {
+    count: workouts.length,
+    distance: workouts.reduce((total, workout) => total + workout.distance, 0),
+    duration: workouts.reduce((total, workout) => total + workoutTime(workout), 0),
+    elevation: workouts.reduce((total, workout) => total + (workout.elevationGain ?? 0), 0),
+    averageHeartRate: average(workouts, "averageHeartRate"),
+    averagePower: average(cyclingWorkouts, "averagePower"),
+    averagePace: runningDistance > 0
+      ? formatPace(runningMovingTime / (runningDistance / 1000))
+      : null,
+    hasRunning: runningWorkouts.length > 0,
+    hasCycling: cyclingWorkouts.length > 0,
+  };
+}
+
 type ConnectionSummary = Awaited<
   ReturnType<ReturnType<typeof authStore>["connection"]>
 >;
@@ -50,22 +119,6 @@ export default async function Home({ searchParams }: {
   }
   const connected = selectedProvider !== null;
   const garminConnected = Boolean(garminConnection?.active);
-  let trainingContext: {
-    count: number;
-    distance: number;
-    movingTime: number;
-  } | null = null;
-  if (connected && session?.user.id) {
-    try {
-      const store = historyStore();
-      trainingContext = await store.context(
-        session.user.id,
-        selectedProvider ?? "strava",
-      );
-    } catch {
-      trainingContext = null;
-    }
-  }
   let workouts: Workout[] = [];
   let workoutsError = false;
   if (connected) {
@@ -75,44 +128,48 @@ export default async function Home({ searchParams }: {
       workoutsError = true;
     }
   }
-  const workoutDate = new Intl.DateTimeFormat("pl-PL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Europe/Warsaw",
+  const todayKey = dateKey(new Date());
+  const weekStartKey = shiftDateKey(todayKey, -6);
+  const monthStartKey = `${todayKey.slice(0, 7)}-01`;
+  const workoutsByDate = workouts.map((workout) => ({
+    workout,
+    date: dateKey(new Date(workout.startedAt)),
+  }));
+  const workoutsThisWeek = workoutsByDate
+    .filter(({ date }) => date >= weekStartKey && date <= todayKey)
+    .map(({ workout }) => workout);
+  const weeklySummary = summarizeWorkouts(workoutsThisWeek);
+  const dailyLoads = Array.from({ length: 7 }, (_, index) => {
+    const date = shiftDateKey(weekStartKey, index);
+    const distance = workoutsThisWeek
+      .filter((workout) => dateKey(new Date(workout.startedAt)) === date)
+      .reduce((total, workout) => total + workout.distance, 0) / 1000;
+    return {
+      date,
+      label: weekdayFormatter.format(new Date(`${date}T12:00:00Z`)).replace(".", ""),
+      distance,
+    };
   });
-  const distance = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
-  const duration = (seconds: number) =>
-    `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  const date = new Intl.DateTimeFormat("pl-PL", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Europe/Warsaw",
-  }).format(new Date());
-
+  const maxDailyDistance = Math.max(0, ...dailyLoads.map(({ distance }) => distance));
+  const periods = [
+    {
+      label: "Tydzień",
+      summary: weeklySummary,
+    },
+    {
+      label: "Miesiąc",
+      summary: summarizeWorkouts(
+        workoutsByDate
+          .filter(({ date }) => date >= monthStartKey && date <= todayKey)
+          .map(({ workout }) => workout),
+      ),
+    },
+  ];
   return (
-    <>
-      <ScreenHeader
-        title="DZIENNIK TRENINGOWY"
-        accountName={session?.user.name}
-      />
-      <div className="screen-content">
-        <div className="content">
-          <div className="page-heading">
-            <div>
-              <p className="eyebrow">{date}</p>
-              <h1>Twoje treningi</h1>
-            </div>
-            <div className="sport-labels">
-              <span>
-                <Bike size={17} /> Kolarstwo
-              </span>
-              <span>
-                <Footprints size={17} /> Bieganie
-              </span>
-            </div>
-          </div>
+    <DashboardPullRefresh>
+      <div className="dashboard-wordmark" aria-label="AI Trainer">
+        AI TRAINER<span className="brand-dot">.</span>
+      </div>
           {connectionError && (
             <p className="notice" role="alert">
               Nie mozna odczytac statusu polaczen.
@@ -127,145 +184,94 @@ export default async function Home({ searchParams }: {
           <RecoverySummary
             enabled={Boolean(session?.user.id)}
           />
+          <section className="dashboard-overview" aria-label="Obciążenie treningowe">
+            {periods.map(({ label, summary }) => {
+              const sportMetrics: Array<{ label: string; value: string | null }> = [];
+              if (summary.hasRunning) {
+                sportMetrics.push({ label: "Śr. tempo", value: summary.averagePace });
+              }
+              if (summary.hasCycling) {
+                sportMetrics.push({
+                  label: "Śr. moc",
+                  value: summary.averagePower === null ? null : `${summary.averagePower} W`,
+                });
+              }
+              if (!sportMetrics.length) {
+                sportMetrics.push(
+                  { label: "Śr. tempo", value: null },
+                  { label: "Śr. moc", value: null },
+                );
+              }
 
-          <div className="dashboard-grid journal-grid">
-            <section id="activities" className="activity-section">
-              <figure className="ride-image">
-                <img src="/cycling.jpg" alt="Rower szosowy" />
-                <figcaption>
-                  <Bike size={17} /> KOLARSTWO SZOSOWE
-                </figcaption>
-              </figure>
-              <div className="section-title">
-                <h2>Ostatnie aktywnosci</h2>
-                <div className="workout-tools">
-                  <span className="muted-label">Ostatnie 50</span>
-                  {connected && <RefreshWorkouts />}
-                </div>
+              return (
+                <article className="dashboard-period" key={label}>
+                  <h2>{label}</h2>
+                  <dl className="dashboard-stat-grid">
+                    <div>
+                      <dt>Dystans</dt>
+                      <dd>{metricNumber.format(summary.distance / 1000)} km</dd>
+                    </div>
+                    <div>
+                      <dt>Czas</dt>
+                      <dd>{`${Math.floor(summary.duration / 3600)}:${String(Math.floor(summary.duration / 60) % 60).padStart(2, "0")}`}</dd>
+                    </div>
+                    <div>
+                      <dt>Wznios</dt>
+                      <dd>{Math.round(summary.elevation)} m</dd>
+                    </div>
+                    <div>
+                      <dt>Treningi</dt>
+                      <dd>{summary.count}</dd>
+                    </div>
+                    <div>
+                      <dt>Śr. tętno</dt>
+                      <dd>{summary.averageHeartRate === null
+                        ? <span className="dashboard-stat-empty">Brak danych</span>
+                        : `${summary.averageHeartRate} bpm`}</dd>
+                    </div>
+                    {sportMetrics.map((metric) => (
+                      <div key={metric.label}>
+                        <dt>{metric.label}</dt>
+                        <dd>{metric.value ?? <span className="dashboard-stat-empty">Brak danych</span>}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </article>
+              );
+            })}
+          </section>
+          <section className="weekly-load-chart" aria-labelledby="weekly-load-heading">
+            <div className="weekly-load-heading">
+              <div>
+                <p>OSTATNIE 7 DNI</p>
+                <h2 id="weekly-load-heading">Obciążenie tygodniowe</h2>
               </div>
-              {trainingContext && trainingContext.count > 0 && (
-                <div
-                  className="training-context"
-                  aria-label="Historia treningowa"
-                >
-                  <span>
-                    <strong>{trainingContext.count}</strong> treningow
+              <strong>{metricNumber.format(weeklySummary.distance / 1000)} <span>km</span></strong>
+            </div>
+            <div
+              className="weekly-load-bars"
+              role="img"
+              aria-label={`Dzienny kilometraż z ostatnich 7 dni, łącznie ${metricNumber.format(weeklySummary.distance / 1000)} kilometrów`}
+            >
+              {dailyLoads.map(({ date, label, distance }) => (
+                <div className="weekly-load-day" key={date} title={`${label}: ${metricNumber.format(distance)} km`}>
+                  <span className="weekly-load-day-value">{distance ? metricNumber.format(distance) : ""}</span>
+                  <span className="weekly-load-track">
+                    <span
+                      className="weekly-load-bar"
+                      style={{ height: `${maxDailyDistance ? Math.max(8, distance / maxDailyDistance * 100) : 0}%` }}
+                    />
                   </span>
-                  <span>
-                    <strong>
-                      {distance.format(trainingContext.distance / 1000)}
-                    </strong>{" "}
-                    km
-                  </span>
-                  <span>
-                    <strong>
-                      {Math.round(trainingContext.movingTime / 3600)}
-                    </strong>{" "}
-                    godzin
-                  </span>
+                  <span className="weekly-load-day-label">{label}</span>
                 </div>
-              )}
-              {workoutsError ? (
-                <p className="notice" role="alert">
-                  Nie mozna odczytac treningow. Sprobuj odswiezyc dziennik.
-                </p>
-              ) : workouts.length ? (
-                <ul className="workout-list" aria-label="Ostatnie treningi">
-                  {workouts.map((workout) => {
-                    const SportIcon = workout.sport.includes("Ride")
-                      ? Bike
-                      : workout.sport.includes("Run")
-                        ? Footprints
-                        : Activity;
-                    return (
-                      <li
-                        className="workout-row"
-                        key={`${workout.provider}-${workout.id}`}
-                      >
-                        <span className="workout-sport" title={workout.sport}>
-                          <SportIcon size={20} aria-label={workout.sport} />
-                        </span>
-                        <div className="workout-main">
-                          <a
-                            className="workout-title"
-                            href={
-                              workout.provider === "strava"
-                                ? `https://www.strava.com/activities/${workout.id}`
-                                : /^\d+$/.test(workout.id)
-                                  ? `https://connect.garmin.com/modern/activity/${workout.id}`
-                                  : "#activities"
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {workout.name}
-                            <ArrowUpRight size={13} />
-                          </a>
-                          <time dateTime={workout.startedAt}>
-                            {workoutDate.format(new Date(workout.startedAt))}
-                          </time>
-                        </div>
-                        <dl className="workout-metrics">
-                          <div>
-                            <dt>Dystans</dt>
-                            <dd>
-                              {distance.format(workout.distance / 1000)}{" "}
-                              <span>km</span>
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>
-                              {workout.provider === "garmin"
-                                ? "Czas treningu"
-                                : "Czas ruchu"}
-                            </dt>
-                            <dd>
-                              {duration(
-                                workout.provider === "garmin"
-                                  ? workout.elapsedTime
-                                  : workout.movingTime,
-                              )}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Przewyzszenie</dt>
-                            <dd>
-                              {workout.elevationGain === undefined
-                                ? "-"
-                                : `${Math.round(workout.elevationGain)} m`}
-                            </dd>
-                          </div>
-                        </dl>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="empty-state">
-                  <div className="empty-icon">
-                    <Activity size={25} />
-                  </div>
-                  <h3>Brak zsynchronizowanych treningow</h3>
-                  <p>
-                    {connected
-                      ? "Twoj dziennik jest jeszcze pusty."
-                      : "Konto sportowe nie jest polaczone."}
-                  </p>
-                </div>
-              )}
-              <div className="activity-footer">
-                <ShieldCheck size={15} />
-                <span>Twoje dane pozostaja prywatne.</span>
-              </div>
-            </section>
-
-          </div>
-          <footer className="page-footer">
-            <span>AI TRAINER</span>
-            <span>Kolarstwo. Bieganie. Twoje tempo.</span>
-          </footer>
-        </div>
-      </div>
-    </>
+              ))}
+            </div>
+          </section>
+          <WorkoutList
+            connected={connected}
+            error={workoutsError}
+            workouts={workouts}
+          />
+    </DashboardPullRefresh>
   );
 }

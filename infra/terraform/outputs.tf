@@ -29,6 +29,23 @@ output "garmin_push_base_url" {
   value       = var.enable_garmin_integration && var.garmin_webhook_token != null ? "${module.webhooks["enabled"].api_endpoint}/webhooks/garmin/${var.garmin_webhook_token}" : null
 }
 
+output "garmin_webhook_url" {
+  description = "Garmin activity callback URL, including the secret token for managed PUSH ingestion. Use garmin_push_base_url for other categories."
+  sensitive   = true
+  value       = var.enable_garmin_integration ? (var.garmin_webhook_token != null ? "${module.webhooks["enabled"].api_endpoint}/api/webhooks/garmin/activities/${var.garmin_webhook_token}" : null) : (try(var.webhook_lambda_arns.garmin, null) != null ? "${module.webhooks["enabled"].api_endpoint}/webhooks/garmin" : null)
+}
+
+output "garmin_webhook_urls" {
+  description = "Secret-bearing Garmin dailies, sleeps and activities callback URLs."
+  sensitive   = true
+  value       = var.enable_garmin_integration && var.garmin_webhook_token != null ? { for category, path in module.webhooks["enabled"].garmin_callback_paths : category => "${module.webhooks["enabled"].api_endpoint}${replace(path, "{token}", var.garmin_webhook_token)}" } : null
+}
+
+output "health_check_url" {
+  description = "No health-check handler is deployed by this Terraform configuration. Garmin's /health category receives health data and is not a service health check."
+  value       = null
+}
+
 output "garmin_oauth_secret_arn" {
   value = try(aws_secretsmanager_secret.garmin_oauth[0].arn, null)
 }

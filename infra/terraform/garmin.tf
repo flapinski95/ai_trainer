@@ -59,7 +59,7 @@ resource "aws_iam_role_policy" "garmin" {
 
 resource "aws_lambda_function" "garmin_ingress" {
   count            = var.enable_garmin_integration ? 1 : 0
-  function_name    = "${local.garmin_prefix}-ingress"
+  function_name    = "${local.garmin_prefix}-webhook"
   role             = aws_iam_role.garmin["ingress"].arn
   runtime          = "nodejs22.x"
   architectures    = ["arm64"]
@@ -69,7 +69,7 @@ resource "aws_lambda_function" "garmin_ingress" {
   timeout          = 30
   memory_size      = 256
   environment {
-    variables = { DYNAMODB_TABLE_NAME = module.dynamodb.table_name, DYNAMODB_KMS_KEY_ARN = module.dynamodb.kms_key_arn, GARMIN_WEBHOOK_TOKEN = var.garmin_webhook_token }
+    variables = { DYNAMODB_TABLE_NAME = module.dynamodb.table_name, DYNAMODB_KMS_KEY_ARN = module.dynamodb.kms_key_arn, GARMIN_WEBHOOK_SECRET = var.garmin_webhook_token, GARMIN_WEBHOOK_TOKEN = var.garmin_webhook_token }
   }
   lifecycle {
     precondition {

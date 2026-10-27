@@ -4,16 +4,19 @@ import { createDailyMetricReader } from "./daily-reader";
 import { createDailyMetricEndpoint } from "./daily-endpoint";
 
 test("daily metric DTO decrypts only the user's own date and excludes raw source records", async () => {
+  const receivedAt = Date.now();
+  const metricDate = new Date(receivedAt).toISOString().slice(0, 10);
   const read = createDailyMetricReader({ query: async (command) => {
     assert.equal(command.input.IndexName, undefined);
     assert.equal(command.input.ConsistentRead, true);
-    assert.equal(command.input.FilterExpression, "entityType = :type");
+    assert.equal(command.input.FilterExpression, "entityType = :type AND receivedAt BETWEEN :cutoff AND :now");
+    assert.deepEqual(Object.keys(command.input.ExpressionAttributeValues ?? {}).sort(), [":cutoff", ":from", ":now", ":to", ":type", ":user"]);
     assert.equal(command.input.ScanIndexForward, false);
-    return { Items: [{ PK: { S: "USER#user" }, SK: { S: "METRIC#2026-10-25" } }] };
+    return { Items: [{ PK: { S: "USER#user" }, SK: { S: `METRIC#${metricDate}` }, receivedAt: { N: String(receivedAt) } }] };
   },
     get: async (command) => { assert.equal(command.input.Key?.PK?.S, "USER#user"); return { Item: { entityType: { S: "GARMIN_METRIC" }, provider: { S: "garmin" }, revision: { S: "rev" }, partCount: { N: "1" } } }; },
     artifacts: { read: async (PK) => { assert.equal(PK, "USER#user"); return "encrypted"; } },
-    encryption: { decrypt: async (_value, context) => { assert.equal(context.userId, "user"); return { date: "2026-10-25", provider: "garmin", values: { restingHeartRate: 48 }, sources: { dailies: { receivedAt: 100, values: { restingHeartRate: 48 }, summaryId: "private-source-reference" } } }; } },
+    encryption: { decrypt: async (_value, context) => { assert.equal(context.userId, "user"); return { date: metricDate, provider: "garmin", values: { restingHeartRate: 48 }, sources: { dailies: { receivedAt: 100, values: { restingHeartRate: 48 }, summaryId: "private-source-reference" } } }; } },
   }, "table");
   const result = await read("user");
   assert.equal(result?.values.restingHeartRate, 48);
@@ -22,20 +25,52 @@ test("daily metric DTO decrypts only the user's own date and excludes raw source
 
 test("latest metric lookup continues past a page containing only encrypted chunks", async () => {
   let calls = 0;
-  const cursor = { PK: { S: "USER#user" }, SK: { S: "METRIC#2026-10-25#PART#rev#000" } };
+  const receivedAt = Date.now();
+  const metricDate = new Date(receivedAt).toISOString().slice(0, 10);
+  const cursor = { PK: { S: "USER#user" }, SK: { S: `METRIC#${metricDate}#PART#rev#000` } };
   const read = createDailyMetricReader({
     query: async (command) => {
       calls += 1;
       if (calls === 1) return { Items: [], LastEvaluatedKey: cursor };
       assert.deepEqual(command.input.ExclusiveStartKey, cursor);
-      return { Items: [{ PK: { S: "USER#user" }, SK: { S: "METRIC#2026-10-25" } }] };
+      return { Items: [{ PK: { S: "USER#user" }, SK: { S: `METRIC#${metricDate}` }, receivedAt: { N: String(receivedAt) } }] };
     },
     get: async () => ({ Item: { entityType: { S: "GARMIN_METRIC" }, provider: { S: "garmin" }, revision: { S: "rev" }, partCount: { N: "1" } } }),
     artifacts: { read: async () => "encrypted" },
-    encryption: { decrypt: async () => ({ date: "2026-10-25", provider: "garmin", values: { bodyBattery: 76 } }) },
+    encryption: { decrypt: async () => ({ date: metricDate, provider: "garmin", values: { bodyBattery: 76 } }) },
   }, "table");
   assert.equal((await read("user"))?.values.bodyBattery, 76);
   assert.equal(calls, 2);
+});
+
+test("latest metric lookup chooses the newest receipt in the 36-hour window, not the newest calendar date", async () => {
+  const now = Date.now();
+  const currentDate = new Date(now).toISOString().slice(0, 10);
+  const previousDate = new Date(now - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const olderDate = new Date(now - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let selectedDate = "";
+  const read = createDailyMetricReader({
+    query: async (command) => {
+      assert.equal(command.input.FilterExpression, "entityType = :type AND receivedAt BETWEEN :cutoff AND :now");
+      return {
+        Items: [
+          { PK: { S: "USER#user" }, SK: { S: `METRIC#${currentDate}` }, receivedAt: { N: String(now - 60000) } },
+          { PK: { S: "USER#user" }, SK: { S: `METRIC#${previousDate}` }, receivedAt: { N: String(now - 1000) } },
+          { PK: { S: "USER#user" }, SK: { S: `METRIC#${olderDate}` }, receivedAt: { N: String(now - 36 * 60 * 60 * 1000 - 1) } },
+        ],
+      };
+    },
+    get: async (command) => {
+      selectedDate = command.input.Key?.SK?.S ?? "";
+      return { Item: { entityType: { S: "GARMIN_METRIC" }, provider: { S: "garmin" }, revision: { S: "rev" }, partCount: { N: "1" } } };
+    },
+    artifacts: { read: async () => "encrypted" },
+    encryption: { decrypt: async () => ({ date: previousDate, provider: "garmin", values: { bodyBattery: 82 } }) },
+  }, "table");
+
+  const result = await read("user");
+  assert.equal(selectedDate, `METRIC#${previousDate}`);
+  assert.equal(result?.values.bodyBattery, 82);
 });
 
 test("daily API requires login and Health consent and never accepts a caller-selected user ID", async () => {
@@ -62,6 +97,8 @@ test("import-only health access excludes PUSH values after Health permission is 
   const read = createDailyMetricReader({
     query: async (command) => {
       assert.equal(command.input.FilterExpression, "entityType = :type AND imported = :imported");
+      assert.deepEqual(Object.keys(command.input.ExpressionAttributeValues ?? {}).sort(), [":imported", ":metric", ":type", ":user"]);
+      assert.deepEqual(command.input.ExpressionAttributeValues?.[":metric"], { S: "METRIC#" });
       return { Items: [{ PK: { S: "USER#user" }, SK: { S: "METRIC#2026-10-25" } }] };
     },
     get: async () => ({ Item: { imported: { BOOL: true }, entityType: { S: "GARMIN_METRIC" }, provider: { S: "garmin" }, revision: { S: "rev" }, partCount: { N: "1" } } }),

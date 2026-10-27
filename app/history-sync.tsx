@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { History, LoaderCircle } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { synchronizeHistory } from "./actions";
 
 export type HistoryStatus = {
@@ -16,9 +16,11 @@ export type HistoryStatus = {
 export function HistorySync({
   status,
   unavailable,
+  className,
 }: {
   status: HistoryStatus;
   unavailable: boolean;
+  className?: string;
 }) {
   const [result, action, pending] = useActionState(synchronizeHistory, {
     message: "",
@@ -61,16 +63,33 @@ export function HistorySync({
         : "Synchronizacja przerwana",
   };
   return (
-    <div className="history-sync">
-      <div className="history-status" role="status">
-        <strong>Historia treningowa</strong>
-        <span>
-          {unavailable
-            ? "Status niedostepny"
-            : status
-              ? (labels[status.state] ?? "Status niedostepny")
-              : "Jeszcze nie pobrano"}
-        </span>
+    <div className={`history-sync${className ? ` ${className}` : ""}`}>
+      <div className="history-sync-row">
+        <div className="history-status" role="status">
+          <strong>Historia treningowa</strong>
+          <span>
+            {unavailable
+              ? "Status niedostepny"
+              : status
+                ? (labels[status.state] ?? "Status niedostepny")
+                : "Jeszcze nie pobrano"}
+          </span>
+        </div>
+        <form action={action}>
+          <button
+            type="submit"
+            className="history-button"
+            title="Synchronizuj historię treningową"
+            disabled={pending || active || unavailable}
+          >
+            {pending ? (
+              <LoaderCircle size={14} className="pending-icon" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            {pending ? "Zlecanie..." : status?.state === "FAILED" ? "Ponów" : "Synchronizuj"}
+          </button>
+        </form>
       </div>
       {status && (
         <p className="history-progress">
@@ -87,24 +106,6 @@ export function HistorySync({
           Ponowienie po: {format(status.retryAt)}
         </p>
       )}
-      <form action={action}>
-        <button
-          type="submit"
-          className="history-button"
-          disabled={pending || active || unavailable}
-        >
-          {pending ? (
-            <LoaderCircle size={16} className="pending-icon" />
-          ) : (
-            <History size={16} />
-          )}
-          {pending
-            ? "Zlecanie..."
-            : status?.state === "FAILED"
-              ? "Ponow synchronizacje"
-              : "Synchronizuj historie"}
-        </button>
-      </form>
       {result.message && (
         <p className="history-progress" role="status">
           {result.message}

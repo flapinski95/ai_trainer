@@ -8,6 +8,7 @@ import { activityProvider } from "@/backend/providers/policy";
 import { createWorkoutStore } from "@/backend/workouts/store";
 import { authStore } from "@/lib/auth-store";
 import { authSettings } from "@/lib/server-config";
+import { defaultAIDataPreferences, type AIDataPreferences } from "@/lib/ai-data-preferences";
 
 function shiftDate(date: string, days: number) {
   const shifted = new Date(`${date}T12:00:00Z`);
@@ -23,7 +24,11 @@ function average(values: (number | undefined)[]) {
   };
 }
 
-export async function athleteChatContext(userId: string, onRecovery?: () => void) {
+export async function athleteChatContext(
+  userId: string,
+  onRecovery?: () => void,
+  dataPreferences: AIDataPreferences = defaultAIDataPreferences,
+) {
   const settings = authSettings();
   if (!settings) throw new Error("Authentication is not configured");
   const options = {
@@ -58,7 +63,6 @@ export async function athleteChatContext(userId: string, onRecovery?: () => void
     do {
       const response = await dynamodb.send(new QueryCommand({
         TableName: settings.DYNAMODB_TABLE_NAME,
-        ConsistentRead: true,
         KeyConditionExpression: "PK = :user AND SK BETWEEN :from AND :to",
         ExpressionAttributeValues: {
           ":user": { S: `USER#${userId}` },
@@ -126,7 +130,7 @@ export async function athleteChatContext(userId: string, onRecovery?: () => void
         recentWorkouts: workouts.slice(0, 5).map((workout) => ({
           date: workout.startedAt,
           sport: workout.sport,
-          name: workout.name,
+          ...(dataPreferences.locationDetails ? { name: workout.name } : {}),
           distanceMeters: workout.distance,
           movingTimeSeconds: workout.movingTime,
           elevationGainMeters: workout.elevationGain,
@@ -134,14 +138,16 @@ export async function athleteChatContext(userId: string, onRecovery?: () => void
           maximumHeartRateBpm: workout.maximumHeartRate ?? null,
           averagePowerWatts: workout.averagePower ?? null,
           maximumPowerWatts: workout.maximumPower ?? null,
-          zoneDistributionScope: "zones_1_to_5_only",
-          heartRateZones: workout.heartRateZones ?? null,
-          powerZones: workout.powerZones ?? null,
+          ...(dataPreferences.effortZones ? {
+            zoneDistributionScope: "zones_1_to_5_only",
+            heartRateZones: workout.heartRateZones ?? null,
+            powerZones: workout.powerZones ?? null,
+          } : {}),
         })),
       };
     }),
     connections.then(async ([, garmin]) => {
-      if (!garmin?.active || !garmin.scopes.includes("HEALTH_EXPORT")) return [];
+      if (!dataPreferences.recoveryMetrics || !garmin?.active || !garmin.scopes.includes("HEALTH_EXPORT")) return [];
       const dates = Array.from({ length: 14 }, (_, index) => shiftDate(today, index - 13));
       const metrics: { date: string; metric: Awaited<ReturnType<typeof metricReader>>; readFailed: boolean }[] = [];
       for (let offset = 0; offset < dates.length; offset += 4) {
@@ -163,21 +169,23 @@ export async function athleteChatContext(userId: string, onRecovery?: () => void
   const restingHeartRateBaseline = average(baselineDays.map((entry) => entry.metric?.values.restingHeartRate));
   return {
     ...activity,
-    healthMetrics: current ? { date: current.date, ...current.values } : null,
-    recoveryTrend: {
-      timeZone: "Europe/Warsaw",
-      startDate: shiftDate(today, -13),
-      endDate: today,
-      hrvBaseline,
-      restingHeartRateBaseline,
-      restingHeartRateDeviationBpm: current?.values.restingHeartRate !== undefined && restingHeartRateBaseline.value !== null
-        ? current.values.restingHeartRate - restingHeartRateBaseline.value : null,
-      days: dailyMetrics.map(({ date, metric, readFailed }) => ({ date, values: metric?.values ?? null, readFailed })),
-      bodyBatterySeries: dailyMetrics.map(({ date, metric }) => ({
-        date,
-        value: metric?.values.bodyBattery ?? null,
-        measuredAt: metric?.values.bodyBatteryMeasuredAt ?? null,
-      })),
-    },
+    ...(dataPreferences.recoveryMetrics ? {
+      healthMetrics: current ? { date: current.date, ...current.values } : null,
+      recoveryTrend: {
+        timeZone: "Europe/Warsaw",
+        startDate: shiftDate(today, -13),
+        endDate: today,
+        hrvBaseline,
+        restingHeartRateBaseline,
+        restingHeartRateDeviationBpm: current?.values.restingHeartRate !== undefined && restingHeartRateBaseline.value !== null
+          ? current.values.restingHeartRate - restingHeartRateBaseline.value : null,
+        days: dailyMetrics.map(({ date, metric, readFailed }) => ({ date, values: metric?.values ?? null, readFailed })),
+        bodyBatterySeries: dailyMetrics.map(({ date, metric }) => ({
+          date,
+          value: metric?.values.bodyBattery ?? null,
+          measuredAt: metric?.values.bodyBatteryMeasuredAt ?? null,
+        })),
+      },
+    } : {}),
   };
 }

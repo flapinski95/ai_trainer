@@ -13,6 +13,11 @@ const connection: Connection = {
   expiresAt: 4102444800,
   authorizedAt: "2026-10-25T00:00:00Z",
 };
+test("Garmin worker initializes AWS clients at module scope", async () => {
+  const worker = await import("./worker");
+  assert.equal(typeof worker.handler, "function");
+});
+
 test("Garmin-only users preserve all health data without any Strava lookup", async () => {
   const record = {
     userId: "garmin-1",

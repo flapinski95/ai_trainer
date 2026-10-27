@@ -1,0 +1,703 @@
+.content {
+  max-width: 900px;
+  padding: 28px 32px 128px;
+}
+
+:global(html):has(.settingsScreen),
+:global(body):has(.settingsScreen) {
+  overflow: hidden;
+}
+
+.settingsScreen,
+.settingsScreen .panel,
+.settingsScreen .panelInner {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.settingsScreen::-webkit-scrollbar,
+.settingsScreen .panel::-webkit-scrollbar,
+.settingsScreen .panelInner::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  :global(.workspace):has(.settingsScreen) {
+    grid-template-rows: 0 minmax(0, 1fr);
+  }
+
+  :global(.workspace):has(.settingsScreen) :global(.sidebar) {
+    height: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  :global(.workspace):has(.settingsScreen) :global(.brand) {
+    display: none;
+  }
+}
+
+.titleBar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 26px;
+}
+
+.titleBar h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.groups {
+  display: grid;
+  gap: 12px;
+}
+
+.accordion {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.accordionHeading {
+  margin: 0;
+}
+
+.accordion:has(.panelOpen) .accordionHeading {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.trigger:hover {
+  background: color-mix(in srgb, var(--surface-hover) 65%, transparent);
+}
+
+.sectionIcon {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.headingText {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-family: "Geist", sans-serif;
+  text-align: right;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 220ms ease;
+}
+
+.panelOpen + .chevron,
+.accordion:has(.panelOpen) .chevron {
+  transform: rotate(180deg);
+}
+
+.panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 240ms ease;
+}
+
+.panelOpen {
+  grid-template-rows: 1fr;
+}
+
+.panelInner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 14px;
+  transition: padding 240ms ease;
+}
+
+.panelOpen .panelInner {
+  padding: 0 14px 14px;
+}
+
+.panelBody :global(.settings-panel),
+.panel :global(.settings-panel),
+.panel :global(.profile-health-panel) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.panel :global(.provider-settings-card) {
+  margin: 0;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+
+.panel :global(.provider-settings-card + .provider-settings-card) {
+  margin-top: 0;
+  padding-top: 10px;
+}
+
+.integrationRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+}
+
+.integrationIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.integrationIdentity h3 {
+  margin: 0 0 3px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.integrationIdentity :global(.status) {
+  gap: 6px;
+}
+
+.integrationIdentity :global(.status.connected) {
+  color: #27825b;
+}
+
+.integrationIdentity :global(.status.connected .status-dot) {
+  background: #27825b;
+}
+
+.garminIcon {
+  flex: 0 0 auto;
+  color: #007cc3;
+}
+
+.inlineAction {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.inlineAction :global(.strava-button),
+.inlineAction :global(.garmin-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-height: 32px;
+  padding: 6px 11px;
+  border: 1px solid;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.inlineAction :global(.strava-button) {
+  border-color: color-mix(in srgb, #fc4c02 40%, transparent);
+  background: color-mix(in srgb, #fc4c02 5%, transparent);
+  color: #fc4c02;
+}
+
+.inlineAction :global(.strava-button:hover:not(:disabled)) {
+  background: color-mix(in srgb, #fc4c02 15%, transparent);
+}
+
+.inlineAction :global(.garmin-button) {
+  border-color: color-mix(in srgb, #007cc3 40%, transparent);
+  background: color-mix(in srgb, #007cc3 5%, transparent);
+  color: #007cc3;
+}
+
+.inlineAction :global(.garmin-button:hover:not(:disabled)) {
+  background: color-mix(in srgb, #007cc3 15%, transparent);
+}
+
+.inlineAction :global(svg) {
+  width: 14px;
+  height: 14px;
+}
+
+.historySync {
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+
+.historySync :global(.history-sync-row) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.historySync :global(.history-status) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.historySync :global(.history-status strong) {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.historySync :global(.history-status span) {
+  color: var(--muted);
+  text-align: right;
+}
+
+.historySync :global(form) {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.historySync :global(.history-progress) {
+  margin: 5px 0 0;
+}
+
+.panel :global(.connection-details) {
+  margin: 6px 0 0;
+}
+
+.panel :global(.connection-details > div) {
+  grid-template-columns: minmax(74px, 0.35fr) minmax(0, 1fr);
+}
+
+.panel :global(.ai-key-save),
+.panel :global(.history-button) {
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.panel :global(.history-button:hover:not(:disabled)) {
+  background: var(--accent-hover);
+}
+
+.panel :global(.history-button),
+.panel :global(.logout-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-height: 32px;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-hover) 78%, transparent);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  transition: background-color 160ms ease;
+}
+
+.panel :global(.history-button:hover:not(:disabled)),
+.panel :global(.logout-button:hover:not(:disabled)) {
+  background: var(--surface-hover);
+}
+
+.logoutFooter {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.logoutFooter :global(.logout-button) {
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #a8a29e;
+  font-size: 11px;
+  transition: color 160ms ease;
+}
+
+.logoutFooter :global(.logout-button:hover:not(:disabled)) {
+  background: transparent;
+  color: #dc2626;
+}
+
+.fileDropZone {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px;
+  border: 1px dashed color-mix(in srgb, #d6d3d1 70%, transparent);
+  border-radius: 16px;
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.fileDropZone:hover {
+  background: color-mix(in srgb, var(--surface-hover) 40%, transparent);
+}
+
+.fileDropZone:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.fileDropZone > svg {
+  color: var(--accent);
+}
+
+.fileDropActive {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fileDropDisabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fileDropPrimary {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fileDropHint {
+  font-size: 10px;
+}
+
+.panel :global(.garmin-import-form button) {
+  justify-self: center;
+  width: auto;
+  min-height: 0;
+  padding: 10px 24px;
+  border-radius: 999px;
+  background: #1c1917;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: none;
+  transition: background-color 160ms ease;
+}
+
+.panel :global(.garmin-import-form button:hover:not(:disabled)) {
+  background: #292524;
+}
+
+.panel :global(.garmin-import-form input).fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.panel :global(.history-sync form) {
+  display: flex;
+}
+
+.panel :global(.garmin-import-panel .section-title h2) {
+  font-size: 14px;
+}
+
+.panel :global(.garmin-import-form input),
+.panel :global(.model-preference-fields select) {
+  min-height: 42px;
+  border-color: var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.panel :global(.ai-key-row) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.panel :global(.ai-key-form) {
+  align-items: center;
+  gap: 0;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  transition: border-color 160ms ease;
+}
+
+.panel :global(.ai-key-form:focus-within) {
+  border-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.panel :global(.ai-key-form input) {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.panel :global(.ai-key-form input:focus-visible) {
+  outline: 0;
+  box-shadow: none;
+}
+
+.panel :global(.ai-key-save) {
+  min-height: 30px;
+  border: 0;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: #57534e;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 160ms ease;
+}
+
+.panel :global(.ai-key-save:hover:not(:disabled)) {
+  background: transparent;
+  color: #1c1917;
+}
+
+.panel :global(.ai-key-delete) {
+  min-height: 42px;
+  border-radius: 11px;
+}
+
+.panel :global(.privacy-note) {
+  margin-top: 16px;
+}
+
+.panel :global(.history-sync) {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.panel :global(.profile-health-panel) {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.panel :global(.profile-health-panel h2) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.panel :global(.profile-health-panel h3) {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel :global(.profile-health-panel ul) {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.panel :global(.push-toggle) {
+  border-bottom: 1px solid var(--line);
+}
+
+.privacySettings {
+  display: grid;
+  gap: 0;
+}
+
+.privacyOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 58px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.privacyLabel {
+  max-width: 520px;
+}
+
+.privacyOption :global(.push-switch) {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 20px;
+  border: 0;
+  border-radius: 10px;
+  background: #d6d3d1;
+}
+
+.privacyOption :global(.push-switch::before) {
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+}
+
+.privacyOption :global(.push-switch:checked) {
+  border-color: #7a1a28;
+  background: #7a1a28;
+}
+
+.privacyOption :global(.push-switch:checked::before) {
+  transform: translateX(16px);
+  background: #ffffff;
+}
+
+.privacyNote {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  .content {
+    padding: 20px 14px calc(128px + env(safe-area-inset-bottom));
+  }
+
+  .titleBar {
+    margin-bottom: 20px;
+  }
+
+  .titleBar h1 {
+    font-size: 27px;
+  }
+
+  .trigger {
+    gap: 9px;
+    min-height: 50px;
+    padding: 9px 12px;
+  }
+
+  .headingText {
+    font-size: 13px;
+  }
+
+  .status {
+    max-width: 38%;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .panelInner,
+  .panelOpen .panelInner {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .panelOpen .panelInner {
+    padding-bottom: 12px;
+  }
+
+  .integrationRow {
+    gap: 8px;
+  }
+
+  .integrationIdentity {
+    gap: 8px;
+  }
+
+  .inlineAction :global(.strava-button),
+  .inlineAction :global(.garmin-button) {
+    gap: 4px;
+    min-height: 30px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .inlineAction :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+
+  .historySync :global(.history-sync-row) {
+    gap: 8px;
+  }
+
+  .historySync :global(.history-status) {
+    gap: 6px;
+  }
+
+  .historySync :global(.history-status strong) {
+    font-size: 11px;
+  }
+
+  .historySync :global(.history-status span) {
+    font-size: 10px;
+  }
+
+  .fileDropZone {
+    padding: 20px 14px;
+  }
+
+  .privacyOption {
+    gap: 12px;
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panelInner,
+  .chevron {
+    transition-duration: 0.01ms;
+  }
+}

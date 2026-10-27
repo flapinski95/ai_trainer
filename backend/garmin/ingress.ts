@@ -13,9 +13,22 @@ import {
   payloadSchema,
   garminHash,
   type GarminCategory,
+  type GarminRecord,
 } from "./payload";
 import { createArtifactStore } from "./artifacts";
 import { createEnvelopeEncryption } from "./encryption";
+
+const callbackCategories = new Map<string, GarminCategory>([
+  ["POST /api/webhooks/garmin/dailies/{token}", "health"],
+  ["POST /api/webhooks/garmin/sleeps/{token}", "health"],
+  ["POST /api/webhooks/garmin/activities/{token}", "activity"],
+]);
+
+function isEmptySummaryPayload(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const summaries = Object.values(value as Record<string, unknown>);
+  return summaries.length === 0 || summaries.every((records) => Array.isArray(records) && records.length === 0);
+}
 
 export function createGarminIngress(
   store: (category: GarminCategory, body: unknown) => Promise<void>,
@@ -35,41 +48,55 @@ export function createGarminIngress(
       }),
     });
     if (!expectedToken || expectedToken.length < 43) return respond(503);
+    const callbackCategory = callbackCategories.get(event.routeKey);
     const digest = (token: string) =>
       createHash("sha256").update(token).digest();
     if (
       !timingSafeEqual(
-        digest(event.pathParameters?.webhookToken ?? ""),
+        digest((callbackCategory ? event.pathParameters?.token : event.pathParameters?.webhookToken) ?? ""),
         digest(expectedToken),
       )
     )
       return respond(403);
     if (event.requestContext.http.method !== "POST") return respond(405);
-    const category = categorySchema.safeParse(event.pathParameters?.category);
+    const category = categorySchema.safeParse(callbackCategory ?? event.pathParameters?.category);
     if (!category.success) return respond(404);
-    if (
-      event.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !==
-      "application/json"
-    )
-      return respond(415);
-    if (
-      !event.body ||
-      Buffer.byteLength(event.body) >
-        (event.isBase64Encoded ? 2800000 : 2 * 1024 * 1024)
-    )
-      return respond(413);
-    let body: unknown;
+    const rawBody = event.body ?? "";
+    if (Buffer.byteLength(rawBody) > (event.isBase64Encoded ? 2800000 : 2 * 1024 * 1024)) return respond(413);
+    const text = event.isBase64Encoded
+      ? Buffer.from(rawBody, "base64").toString("utf8")
+      : rawBody;
+    if (Buffer.byteLength(text) > 2 * 1024 * 1024) return respond(413);
+    if (!text.trim()) {
+      console.info("[GARMIN WEBHOOK] empty_ping", { category: category.data });
+      return respond(200);
+    }
+    if (event.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json") return respond(415);
+    let body: Record<string, GarminRecord[]>;
     try {
-      const text = event.isBase64Encoded
-        ? Buffer.from(event.body, "base64").toString("utf8")
-        : event.body;
-      if (Buffer.byteLength(text) > 2 * 1024 * 1024) return respond(413);
-      body = payloadSchema.parse(JSON.parse(text));
+      const parsed: unknown = JSON.parse(text);
+      if (isEmptySummaryPayload(parsed)) {
+        console.info("[GARMIN WEBHOOK] empty_ping", { category: category.data });
+        return respond(200);
+      }
+      body = payloadSchema.parse(parsed);
     } catch {
       return respond(400);
     }
+    const summaries = Object.entries(body).map(([type, records]) => ({
+      type,
+      count: records.length,
+    }));
+    console.info("[GARMIN WEBHOOK] received", {
+      category: category.data,
+      summaries,
+    });
     try {
       await store(category.data, body);
+      console.info("[GARMIN WEBHOOK] persisted", {
+        category: category.data,
+        summaries,
+      });
       return respond(200);
     } catch {
       console.error("garmin_push_persistence_failed");
@@ -123,5 +150,5 @@ export async function handler(event: APIGatewayProxyEventV2) {
       )
         throw error;
     }
-  }, process.env.GARMIN_WEBHOOK_TOKEN)(event);
+  }, process.env.GARMIN_WEBHOOK_SECRET ?? process.env.GARMIN_WEBHOOK_TOKEN)(event);
 }
