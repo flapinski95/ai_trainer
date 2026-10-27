@@ -51,16 +51,16 @@ export function createRateGate(
     ...["TOTAL", ...(kind === "read" ? ["READ"] : [])].flatMap((category) =>
       [900, 86400].map((window) => ({
         name: `${category}#${window}#${Math.floor(clock() / 1000 / window)}`,
-        cap: Number(
+        cap: Math.min(window === 900 ? 100 : Infinity, Number(
           caps[`${category}${window}`] ??
             (category === "READ"
               ? window === 900
-                ? 200
+                ? 100
                 : 2000
               : window === 900
-                ? 400
+                ? 100
                 : 4000),
-        ),
+              )),
         window,
       })),
     ),

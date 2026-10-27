@@ -3,6 +3,275 @@
   padding: 28px 32px 128px;
 }
 
+.physiologyForm {
+  padding-top: 20px;
+}
+
+.physiologyFields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.physiologyFields legend {
+  margin-bottom: 16px;
+  color: var(--ink);
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 21px;
+}
+
+.physiologyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+
+.physiologyField {
+  min-width: 0;
+}
+
+.physiologyField label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.physiologyField label span,
+.fieldHint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.physiologyInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.physiologyInput:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.physiologyInput input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physiologyInput > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fieldHint,
+.fieldError {
+  display: block;
+  margin-top: 6px;
+}
+
+.fieldError {
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ftpField {
+  grid-column: 1 / -1;
+  max-width: 220px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.powerMeterRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.powerMeterRow input {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 28px;
+  margin: 0;
+  opacity: 0;
+}
+
+.switchTrack {
+  flex: 0 0 44px;
+  height: 28px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition: background-color 160ms ease;
+}
+
+.switchTrack::after {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+  transition: transform 160ms ease;
+}
+
+.powerMeterRow input:checked + .switchTrack {
+  background: var(--accent);
+}
+
+.powerMeterRow input:checked + .switchTrack::after {
+  transform: translateX(16px);
+}
+
+.powerMeterRow input:focus-visible + .switchTrack {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.physiologyFields:disabled {
+  opacity: 0.6;
+}
+
+.zonePreviews {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.zonePreview h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.zonePreview h3 span {
+  color: var(--muted);
+}
+
+.zoneStrip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+}
+
+.zoneStrip > div {
+  min-width: 0;
+  padding: 8px 4px;
+  border-top: 2px solid var(--line);
+  text-align: center;
+}
+
+.zoneStrip > div:nth-child(2) { border-color: #27825b; }
+.zoneStrip > div:nth-child(3) { border-color: #007cc3; }
+.zoneStrip > div:nth-child(4) { border-color: var(--accent); }
+.zoneStrip > div:nth-child(5) { border-color: var(--ink); }
+
+.zoneStrip dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.zoneStrip dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.physiologyFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  margin-top: 12px;
+}
+
+.physiologyFooter p {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.physiologySave {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.physiologySave:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.savingIcon {
+  animation: physiology-spin 1s linear infinite;
+}
+
+@keyframes physiology-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .physiologyGrid { grid-template-columns: 1fr; gap: 16px; }
+  .physiologyField label { grid-template-columns: 1fr auto; align-items: baseline; }
+  .ftpField { max-width: none; }
+  .physiologyFooter { align-items: flex-start; flex-direction: column; padding-top: 8px; }
+  .physiologySave { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switchTrack,
+  .switchTrack::after { transition: none; }
+  .savingIcon { animation: none; }
+}
+
 :global(html):has(.settingsScreen),
 :global(body):has(.settingsScreen) {
   overflow: hidden;

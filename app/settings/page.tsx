@@ -22,6 +22,8 @@ import { PushSettings } from "../push-settings";
 import { readAthleteMemory } from "../api/chat/memory";
 import { AIPrivacySettings } from "./ai-privacy-settings";
 import { SettingsAccordion } from "./settings-accordion";
+import { PhysiologySettings } from "./physiology-settings";
+import type { AthletePhysiology } from "@/lib/athlete-zones";
 import styles from "./settings.module.css";
 
 export const dynamic = "force-dynamic";
@@ -96,9 +98,13 @@ export default async function SettingsPage({
   const configuredKeyCount = providers.length;
   let profile: Awaited<ReturnType<typeof readAthleteMemory>> = {};
   let profileError = false;
+  let physiology: AthletePhysiology = {};
+  let physiologyError = false;
   if (session?.user.id) {
     try { profile = await readAthleteMemory(session.user.id); }
     catch { profileError = true; }
+    try { physiology = await authStore().physiology(session.user.id); }
+    catch { physiologyError = true; }
   }
 
   return (
@@ -220,6 +226,15 @@ export default async function SettingsPage({
             ) : (
               <p className="settings-empty">Zaloguj sie, aby zarzadzac kluczami AI.</p>
             )}
+          </SettingsAccordion>
+
+          <SettingsAccordion
+            id="physiology"
+            title="Strefy Fizjologiczne & Progi"
+            status={physiologyError ? "Odczyt niedostępny" : physiology.max_hr || physiology.lthr || physiology.ftp_watts || physiology.z2_hr_upper ? "Progi indywidualne" : "Nie skonfigurowano"}
+            icon="sliders"
+          >
+            <PhysiologySettings initial={physiology} enabled={Boolean(session?.user.id)} unavailable={physiologyError} />
           </SettingsAccordion>
 
           <SettingsAccordion

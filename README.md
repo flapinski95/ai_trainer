@@ -79,6 +79,20 @@ and `kms:GenerateDataKey` on its KMS key
 use a dedicated execution role with scoped permissions, not the personal administrator
 profile. Keep production secrets in the hosting platform's secret storage.
 
+### Activity History
+
+Open `/activities` from the dashboard's recent workouts section. The authenticated
+`GET /api/activities?page=1&limit=20&type=all` endpoint returns
+`{ activities, page, limit, nextCursor }`. Supported types are `all`, `cycling`,
+and `running`; limits range from 1 to 100. Request the next page with the returned
+`cursor=<nextCursor>` and incremented `page`, keeping the same type and limit.
+`nextCursor: null` marks the end; later pages without a cursor return HTTP 400.
+Reads use descending date order on the existing KEYS_ONLY `GSI1`, followed by
+consistent base-table batch reads. Strava takes precedence over Garmin, including
+Garmin imports. Each request is capped at 20 index queries, so sparse filters can
+produce shorter or empty pages with a continuation cursor. The UI caches pages
+in a user-scoped SWR cache; responses are private and not stored in HTTP caches.
+
 Logged-in users can save OpenAI, Anthropic, and Google Gemini API keys from the
 **Klucze AI** section of the dashboard. Keys are encrypted with the DynamoDB KMS key
 using the internal user ID and provider as encryption context; settings only display
@@ -516,11 +530,26 @@ seconds (60 seconds during waits); it does not poll Strava from the browser.
 
 The first import pages through all accessible activity summaries with `per_page=200`
 and a fixed `before` cutoff. Subsequent logins import since the last successful
-cutoff minus seven days. Repeated automatic requests within 15 minutes are suppressed;
+cutoff minus seven days. The manual history action always requests a full backfill
+from `after=0`, including years before the current year, so it can repair older gaps.
+`backend/strava/backfill.ts` exposes the full-backfill request and the existing
+resumable processor; the authenticated settings action uses this entry point.
+Strava returns newest activities first; the processor advances `page` until a page
+contains fewer than 200 rows. The API does not provide oldest-first ordering.
+Repeated automatic requests within 15 minutes are suppressed;
 manual requests have a one-minute cooldown. One active job is reused rather than
 duplicated. Expanded `activity:read_all` consent starts a full pass when the previous
 job is no longer active. Private activities still require that scope; the default
 login requests only `activity:read`.
+
+The AI context previously read only ten workouts from the last 14 days. That read
+does not control which workouts are stored in DynamoDB. It now paginates all activity
+index keys from January 1 of the current Warsaw calendar year, without a low query
+`Limit`, then hydrates at most ten recent workouts with Strava precedence. The
+2,000-byte AI context budget can further reduce the number sent to the model; it is
+not a full-year activity export. Distances use one-decimal kilometres, activity,
+segment and sleep durations use `Xh Ym`, and elevation gains use metres. Recovery
+metrics retain their separate 14-day window.
 
 ### Data And Cost Boundaries
 
@@ -544,9 +573,11 @@ login requests only `activity:read`.
 	totals may be partial until the initial import finishes. The lightweight history
 	remains stored per activity to support idempotent updates and corrections.
 - Both import and webhook API clients reserve an atomic shared budget in DynamoDB:
-	defaults are 200 read calls/15 minutes and 2000/day, 400 overall/15 minutes and
-	4000/day. Import stops at 90% to leave a webhook reserve. Response headers update
-	observed quotas and usage; `429` persists a quarter-hour/daily/Retry-After wait.
+	defaults are 100 read calls/15 minutes and 2000/day, 100 overall/15 minutes and
+	4000/day. Both 15-minute budgets are capped at 100 even if response headers report
+	higher limits; lower observed limits are respected. Import stops at 90% to leave
+	a webhook reserve. Response headers update observed quotas and usage; `429`
+	persists a quarter-hour/daily/Retry-After wait.
 	Auth.js's own OAuth/profile requests and external tools are not routed through this
 	worker limiter; later response headers reconcile their usage, so the reserve matters.
 - A `rate(1 minute)` EventBridge rule resumes due work with webhook priority. No scan
@@ -579,14 +610,17 @@ have these permissions for local development; production should use a scoped rol
 After deployment, log in again or press the history button. This performs real reads
 from Strava and writes to AWS. Inspect `SYNC#STRAVA` and `SUMMARY#...` under your user
 partition and verify that training totals stabilize on repeat import. A terminal
-failure preserves its cursor for manual retry; rate-limit waits resume automatically.
+failure of a full backfill preserves its cursor for manual retry; a failed incremental
+job is replaced by a full pass when the manual action is used. Rate-limit waits resume automatically.
 An authorization failure requires reconnecting Strava. If the worker cannot persist
 its checkpoint, lease expiry and the scheduled index allow later recovery.
 
 The import does not infer missing/deleted historical activities from absence in a
 page, and a seven-day incremental window does not detect arbitrary edits to older
-activities when webhook delivery was missed. Webhooks remain responsible for those
-changes. A full historical reconciliation/export and alert emails are not implemented.
+activities when webhook delivery was missed. The manual full backfill repairs missing
+older records but deliberately preserves webhook-owned records and deletion tombstones.
+Webhooks remain responsible for changes to those existing records. Destructive
+historical reconciliation, archive export and alert emails are not implemented.
 
 ---
 *Created for private, non-commercial use.*

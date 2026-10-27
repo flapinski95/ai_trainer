@@ -41,18 +41,20 @@ test("full first import and subsequent overlapping incremental windows", () => {
   assert.equal(syncWindow(now, lastSuccess, true).after, 0);
 });
 
-test("details are requested only for recent activities with expected missing sensor metrics", () => {
+test("details are requested for recent rides missing segments or activities missing expected sensor metrics", () => {
   const recent = normalizeSummary({ ...payload, has_heartrate: true }, "456");
   const cutoff = Date.parse("2026-10-25T16:00:00Z") / 1000;
   assert.equal(needsDetails(recent, cutoff), true);
   assert.equal(
     needsDetails({ ...recent, average_heartrate: 140 }, cutoff),
-    false,
+    true,
   );
   assert.equal(
     needsDetails({ ...recent, has_heartrate: false }, cutoff),
-    false,
+    true,
   );
+  assert.equal(needsDetails({ ...recent, average_heartrate: 140, segment_efforts: [] }, cutoff), false);
+  assert.equal(needsDetails({ ...recent, sport_type: "Run", has_heartrate: false }, cutoff), false);
   assert.equal(
     needsDetails({ ...recent, start_date: "2020-01-01T00:00:00Z" }, cutoff),
     false,

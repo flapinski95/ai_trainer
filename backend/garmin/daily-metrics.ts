@@ -12,6 +12,7 @@ export const dailyValuesSchema = z.object({
   hrvLastNightFiveMinuteHigh: z.number().positive().max(1000).optional(),
   sleepDurationSeconds: z.number().int().nonnegative().optional(),
   sleepScore: z.number().min(0).max(100).optional(),
+  stressAverage: z.number().min(0).max(100).optional(),
   sleepQualifier: z.string().max(100).optional(),
   sleepValidation: z.string().max(100).optional(),
   bodyBattery: z.number().min(0).max(100).optional(),
@@ -47,6 +48,7 @@ export function projectDailyMetric(type: string, record: GarminRecord, receivedA
   const values: DailyValues = {};
   if (type === "dailies") {
     values.restingHeartRate = numberIn(record.restingHeartRateInBeatsPerMinute, 1, 300);
+    values.stressAverage = numberIn(record.averageStressLevel, 0, 100);
     values.bodyBatteryCharged = numberIn(record.bodyBatteryChargedValue, 0);
     values.bodyBatteryDrained = numberIn(record.bodyBatteryDrainedValue, 0);
   }

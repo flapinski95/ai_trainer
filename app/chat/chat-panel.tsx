@@ -28,6 +28,8 @@ function chatErrorMessage(message: string) {
   const errors: Record<string, string> = {
     provider_key_missing: "Brak klucza dla wybranego dostawcy. Dodaj go w ustawieniach AI.",
     chat_message_save_failed: "Nie udało się zapisać odpowiedzi. Spróbuj ponownie.",
+    chat_generation_empty: "Model zwrócił pustą odpowiedź. Ponów zapytanie lub wybierz inny model.",
+    chat_generation_interrupted: "Odpowiedź modelu została przerwana. Ponów zapytanie lub wybierz inny model.",
     provider_rate_limited: "Dostawca AI zgłosił limit zapytań lub limit konta (429). Spróbuj później albo sprawdź limity klucza.",
     provider_auth_failed: "Dostawca AI odrzucił klucz (401). Zaktualizuj go w ustawieniach AI.",
     provider_access_denied: "Klucz nie ma dostępu do wybranego modelu (403). Sprawdź uprawnienia lub wybierz inny model.",
@@ -84,7 +86,8 @@ function toUIMessages(messages: ChatMessage[]): CoachMessage[] {
   }));
 }
 
-export function ChatPanel({ providers, initialSessionId, userId }: { providers: AIProvider[]; initialSessionId?: string; userId: string }) {
+export function ChatPanel({ providers, initialSessionId, initialActivityId, userId }: { providers: AIProvider[]; initialSessionId?: string; initialActivityId?: string; userId: string }) {
+  const [activityId, setActivityId] = useState<string | null>(initialSessionId ? null : initialActivityId ?? null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [provider, setProvider] = useState<AIProvider>(providers[0] ?? "openai");
@@ -116,13 +119,14 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
   const messageList = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const followLatest = useRef(true);
-  const requestOptions = useRef({ sessionId, provider, modelId, userId });
-  requestOptions.current = { sessionId, provider, modelId, userId };
+  const requestOptions = useRef({ sessionId, provider, modelId, userId, activityId });
+  requestOptions.current = { sessionId, provider, modelId, userId, activityId };
   const [transport] = useState(() => new DefaultChatTransport<CoachMessage>({
     api: "/api/chat",
     prepareSendMessagesRequest: ({ messages: outgoingMessages, trigger, messageId }) => ({
       body: {
         ...(requestOptions.current.sessionId ? { sessionId: requestOptions.current.sessionId } : {}),
+        ...(requestOptions.current.activityId ? { activityId: requestOptions.current.activityId } : {}),
         provider: requestOptions.current.provider,
         modelId: requestOptions.current.modelId,
         dataPreferences: readAIDataPreferences(requestOptions.current.userId),
@@ -189,11 +193,13 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
         if (request !== historyRequest.current) return;
         const saved = data.sessions ?? [];
         setSessions(saved);
-        const selected = initialSessionId ? saved.find((item) => item.sessionId === initialSessionId) : saved.find((item) => !item.archived);
+        const selected = initialSessionId ? saved.find((item) => item.sessionId === initialSessionId)
+          : initialActivityId ? undefined : saved.find((item) => !item.archived);
         setSessionId(selected?.sessionId ?? null);
         setMessages([]);
         if (!selected) {
           if (initialSessionId) setError("Nie można odnaleźć tej rozmowy.");
+          else if (initialActivityId) setDraft("Przeanalizuj dogłębnie ten trening.");
           return;
         }
         const historyResponse = await fetch(`/api/chat?sessionId=${encodeURIComponent(selected.sessionId)}`, {
@@ -209,7 +215,7 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
       }
     })();
     return () => controller.abort();
-  }, [initialSessionId, setMessages]);
+  }, [initialSessionId, initialActivityId, setMessages]);
 
   useEffect(() => {
     const container = messageList.current;
@@ -259,6 +265,7 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
       const data = await response.json() as { messages?: ChatMessage[] };
       if (request !== historyRequest.current) return;
       followLatest.current = true;
+      setActivityId(null);
       setSessionId(nextSessionId);
       setMessages(toUIMessages(data.messages ?? []));
     } catch {
@@ -290,7 +297,7 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
         setSessionId(created.sessionId);
         setSessions((current) => [created, ...current.filter((saved) => saved.sessionId !== created.sessionId)]);
       }
-      requestOptions.current = { sessionId: activeSessionId, provider, modelId };
+      requestOptions.current = { ...requestOptions.current, sessionId: activeSessionId, provider, modelId };
       setPreparing(false);
       await sendChatMessage({ text: content });
     } catch {
@@ -326,7 +333,7 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
     }
     const snapshot = [...messages];
     regeneration.current = { messageId, snapshot };
-    requestOptions.current = { sessionId, provider, modelId };
+    requestOptions.current = { ...requestOptions.current, sessionId, provider, modelId };
     setError("");
     lastChatError.current = null;
     clearError();
@@ -351,6 +358,7 @@ export function ChatPanel({ providers, initialSessionId, userId }: { providers: 
 
   function startNewConversation() {
     if (busy || providers.length === 0) return;
+    setActivityId(null);
     setSessionId(null);
     setMessages([]);
     setError("");

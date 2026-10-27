@@ -31,6 +31,11 @@ export function providerErrorDetails(error: unknown) {
 }
 
 export function providerErrorCode(error: unknown) {
+  if (error instanceof Error) {
+    if (error.name === "TimeoutError" || error.message === "provider_timeout") return "provider_timeout";
+    if (error.message === "chat_generation_empty") return "chat_generation_empty";
+    if (error.message === "chat_generation_interrupted") return "chat_generation_interrupted";
+  }
   const details = providerErrorDetails(error);
   if (details.statusCode === 429 || details.providerStatus === "RESOURCE_EXHAUSTED") return "provider_rate_limited";
   if (details.statusCode === 401 || details.providerStatus === "UNAUTHENTICATED") return "provider_auth_failed";
@@ -83,7 +88,7 @@ export async function runWithGoogleFallback<T>(
       provider !== "google" ||
       selectedModel === googleFallbackModel ||
       hasPartialOutput() ||
-      (!isUnavailableProviderError(error) && providerErrorCode(error) !== "provider_rate_limited")
+      (!isUnavailableProviderError(error) && !["provider_rate_limited", "provider_timeout", "chat_generation_empty"].includes(providerErrorCode(error)))
     )
       throw error;
     return run(googleFallbackModel);

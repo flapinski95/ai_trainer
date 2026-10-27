@@ -28,7 +28,7 @@ export function createStravaClient(
 
   return {
     fetchActivity: async (id: number, token: string) => {
-      const activity = await read(`activities/${id}`, token);
+      const activity = await read(`activities/${id}?include_all_efforts=true`, token);
       if (!activity || typeof activity !== "object") return activity;
       const hasHeartRate = "has_heartrate" in activity && activity.has_heartrate === true;
       const hasPower = "device_watts" in activity && activity.device_watts === true;

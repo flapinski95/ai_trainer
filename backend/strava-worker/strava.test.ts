@@ -5,7 +5,7 @@ import { StravaRequestError } from "./processor";
 
 test("Strava activity requests use bearer headers, a deadline and no redirects", async () => {
   const request: typeof fetch = async (input, init) => {
-    assert.equal(input, "https://www.strava.com/api/v3/activities/123");
+    assert.equal(input, "https://www.strava.com/api/v3/activities/123?include_all_efforts=true");
     assert.deepEqual(init?.headers, { authorization: "Bearer test-access" });
     assert.equal(init?.redirect, "error");
     assert.ok(init?.signal);

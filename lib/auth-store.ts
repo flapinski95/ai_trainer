@@ -4,6 +4,7 @@ import { KMSClient } from "@aws-sdk/client-kms";
 import { createAuthStore } from "@/backend/auth/store";
 import { authSettings } from "./server-config";
 import { createIdentityStore } from "@/backend/auth/identity";
+import { createPhysiologyStore } from "@/backend/auth/physiology";
 
 export function authStore() {
   const settings = authSettings();
@@ -26,6 +27,7 @@ export function authStore() {
   );
   return {
     ...connections,
+    ...createPhysiologyStore({ get: (command) => dynamodb.send(command), update: (command) => dynamodb.send(command) }, settings.DYNAMODB_TABLE_NAME),
     ...createIdentityStore(
       {
         get: (command) => dynamodb.send(command),

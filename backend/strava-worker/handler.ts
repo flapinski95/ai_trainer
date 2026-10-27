@@ -16,7 +16,7 @@ import { createWorkerStore } from "./store";
 import { createProcessor, StravaRequestError } from "./processor";
 import { createStravaClient } from "./strava";
 import { createJobStore } from "../history/jobs";
-import { createHistoryProcessor } from "../history/processor";
+import { createStravaBackfill } from "../strava/backfill";
 import { createRateGate, RateLimitError } from "../history/rate-limit";
 import { userIdSchema } from "../auth/identity";
 
@@ -151,7 +151,7 @@ export async function handler(
       throw error;
     }
   };
-  const synchronize = createHistoryProcessor({
+  const synchronize = createStravaBackfill({
     ...store,
     ...historyClient,
     ...jobs,

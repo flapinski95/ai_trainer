@@ -45,6 +45,7 @@ function setup(overrides: Partial<Dependencies> = {}) {
   let current = initial();
   const saved: SyncJob[] = [];
   let listings = 0;
+  let details = 0;
   let writes = 0;
   const process = createHistoryProcessor({
     claim: async () => structuredClone(current),
@@ -68,8 +69,10 @@ function setup(overrides: Partial<Dependencies> = {}) {
         id: 123 + index,
       }));
     },
-    fetchActivity: async () =>
-      assert.fail("Complete summaries must not request details"),
+    fetchActivity: async (id) => {
+      details += 1;
+      return { ...row, id, segment_efforts: [], pr_count: 0, achievement_count: 0 };
+    },
     saveHistory: async () => {
       writes += 1;
       return true;
@@ -77,10 +80,10 @@ function setup(overrides: Partial<Dependencies> = {}) {
     clock: () => now,
     ...overrides,
   });
-  return { process, saved, counts: () => ({ listings, writes }) };
+  return { process, saved, counts: () => ({ listings, details, writes }) };
 }
 
-test("import yields after ten activities and resumes the cached page without another API request", async () => {
+test("import fetches ride details and resumes the cached page without another list request", async () => {
   const importer = setup();
   await importer.process("strava-456");
   assert.equal(importer.saved[0]?.state, "QUEUED");
@@ -88,7 +91,7 @@ test("import yields after ten activities and resumes the cached page without ano
   await importer.process("strava-456");
   assert.equal(importer.saved[1]?.state, "SUCCEEDED");
   assert.equal(importer.saved[1]?.lastSuccess, now / 1000);
-  assert.deepEqual(importer.counts(), { listings: 1, writes: 12 });
+  assert.deepEqual(importer.counts(), { listings: 1, details: 12, writes: 12 });
 });
 
 test("rate-limit waits preserve the cursor and actual reset time without failing the job", async (context) => {
@@ -126,7 +129,7 @@ test("an exhausted Lambda budget yields without dropping or acknowledging unproc
   await importer.process("strava-456");
   assert.equal(importer.saved[0]?.offset, 0);
   assert.equal(importer.saved[0]?.pending?.length, 12);
-  assert.deepEqual(importer.counts(), { listings: 1, writes: 0 });
+  assert.deepEqual(importer.counts(), { listings: 1, details: 0, writes: 0 });
 });
 
 test("empty terminal pages complete the import without a full archive stored in the job", async () => {

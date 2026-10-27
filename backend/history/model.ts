@@ -5,7 +5,6 @@ import { activitySchema, type Activity } from "../strava-worker/processor";
 export const DAY = 86400;
 export const PAGE_SIZE = 200;
 export const summarySchema = activitySchema.extend({
-  has_heartrate: z.boolean().optional(),
   device_watts: z.boolean().optional(),
 });
 export type ActivitySummary = z.infer<typeof summarySchema>;
@@ -42,7 +41,8 @@ export function needsDetails(
 ): boolean {
   return (
     isWithinDetailWindow(activity.start_date, cutoff) &&
-    ((activity.has_heartrate === true &&
+    ((activity.sport_type.includes("Ride") && activity.segment_efforts === undefined) ||
+      (activity.has_heartrate === true &&
       activity.average_heartrate === undefined) ||
       (activity.device_watts === true && activity.average_watts === undefined))
   );
@@ -78,6 +78,13 @@ export function metrics(activity: WorkoutMetrics) {
     power_zones: activity.power_zones,
     average_speed: activity.average_speed,
     average_cadence: activity.average_cadence,
+    max_cadence: activity.max_cadence,
+    has_heartrate: activity.has_heartrate,
+    device_watts: activity.device_watts,
+    athlete_count: activity.athlete_count,
+    segment_efforts: activity.segment_efforts,
+    pr_count: activity.pr_count,
+    achievement_count: activity.achievement_count,
   };
 }
 

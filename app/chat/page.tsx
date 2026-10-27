@@ -8,9 +8,10 @@ import styles from "./chat.module.css";
 
 export const dynamic = "force-dynamic";
 
-export default async function ChatPage({ searchParams }: { searchParams: Promise<{ sessionId?: string }> }) {
+export default async function ChatPage({ searchParams }: { searchParams: Promise<{ sessionId?: string; activityId?: string }> }) {
   const query = await searchParams;
   const requestedSession = z.string().uuid().safeParse(query.sessionId);
+  const requestedActivity = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).safeParse(query.activityId);
   const session = authSettings() ? await auth() : null;
   let providers: AIProvider[] = [];
   let keysError = false;
@@ -34,7 +35,7 @@ export default async function ChatPage({ searchParams }: { searchParams: Promise
                 Nie mozna odczytac statusu kluczy AI.
               </p>
             )}
-            <ChatPanel userId={session.user.id} providers={providers} initialSessionId={requestedSession.success ? requestedSession.data : undefined} />
+            <ChatPanel userId={session.user.id} providers={providers} initialSessionId={requestedSession.success ? requestedSession.data : undefined} initialActivityId={requestedActivity.success ? requestedActivity.data : undefined} />
           </>
         ) : (
           <>

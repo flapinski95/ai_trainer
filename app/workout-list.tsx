@@ -1,4 +1,5 @@
-import { Activity, Bike, Footprints } from "lucide-react";
+import Link from "next/link";
+import { Activity, ArrowRight, Bike, Footprints } from "lucide-react";
 import type { Workout } from "@/backend/workouts/store";
 
 const previewSize = 4;
@@ -27,7 +28,12 @@ export function WorkoutList({
 
   return (
     <section id="activities" className="activity-section" aria-label="Ostatnie treningi">
-      <h2 className="dashboard-section-title">Ostatnie treningi</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="dashboard-section-title">Ostatnie treningi</h2>
+        <Link href="/activities" className="inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-[var(--accent)]!">
+          Wszystkie aktywnosci<ArrowRight size={15} aria-hidden="true" />
+        </Link>
+      </div>
       {error ? (
         <p className="notice" role="alert">
           Nie można odczytać treningów. Spróbuj odświeżyć dziennik.

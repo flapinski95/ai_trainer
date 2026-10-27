@@ -29,6 +29,7 @@ export const jobSchema = z.object({
   readAll: z.boolean(),
   lastSuccess: z.number().optional(),
   successReadAll: z.boolean().optional(),
+  fullBackfill: z.boolean().optional(),
   requestedAt: z.number(),
   dueAt: z.number(),
   leaseId: z.string().optional(),
@@ -83,7 +84,7 @@ export function createJobStore(
   }
   return {
     load,
-    async request(userId: string, readAll: boolean, manual = false) {
+    async request(userId: string, readAll: boolean, manual = false, fullBackfill = false) {
       userIdSchema.parse(userId);
       const previous = await load(userId);
       const now = Math.floor(clock() / 1000);
@@ -93,11 +94,12 @@ export function createJobStore(
         return false;
       const window = syncWindow(
         clock(),
-        previous?.lastSuccess,
+        fullBackfill ? undefined : previous?.lastSuccess,
         readAll && !previous?.successReadAll,
       );
       const resume =
-        previous?.state === "FAILED" && (!readAll || previous.readAll);
+        previous?.state === "FAILED" && (!readAll || previous.readAll) &&
+        (!fullBackfill || previous.fullBackfill === true);
       const job = jobSchema.parse({
         ...previous,
         ...window,
@@ -105,6 +107,7 @@ export function createJobStore(
         userId,
         state: "QUEUED",
         readAll,
+        fullBackfill: fullBackfill || (resume && previous.fullBackfill) || undefined,
         page: resume ? previous.page : 1,
         offset: resume ? previous.offset : 0,
         pending: resume ? previous.pending : undefined,

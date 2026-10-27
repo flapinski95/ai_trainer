@@ -3,7 +3,41 @@ import { type StravaEvent } from "../strava-webhook/events";
 import { zoneDistributionSchema } from "../workouts/telemetry";
 
 const identifier = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const optionalTelemetry = z.number().finite().nonnegative().nullish().transform((value) => value ?? undefined).optional();
+const optionalRank = z.number().int().nonnegative().nullish().transform((value) => value ?? undefined).optional();
+const optionalGrade = z.number().finite().nullish().transform((value) => value ?? undefined).optional();
+const nullableString = z.string().max(512).nullish().transform((value) => value ?? undefined).optional();
+const nullableId = z.number().finite().nonnegative().nullish().transform((value) => value ?? undefined).optional();
+const segmentEffortSchema = z.object({
+  name: nullableString,
+  segment: z.object({
+    id: nullableId,
+    name: nullableString,
+    distance: optionalTelemetry,
+    average_grade: optionalGrade,
+  }).nullish().transform((value) => value ?? undefined).optional(),
+  distance: optionalTelemetry,
+  average_grade: optionalGrade,
+  elapsed_time: optionalTelemetry,
+  moving_time: optionalTelemetry,
+  average_heartrate: optionalTelemetry,
+  max_heartrate: optionalTelemetry,
+  average_cadence: optionalTelemetry,
+  average_watts: optionalTelemetry,
+  pr_rank: optionalRank,
+  kom_rank: optionalRank,
+});
+
 export const activitySchema = z.object({
+  pr_count: optionalRank,
+  achievement_count: optionalRank,
+  segment_efforts: z.array(segmentEffortSchema).nullish().transform((value) => value ?? undefined).optional(),
+  athlete_count: z.number().int().nonnegative().nullish().transform((value) => value ?? undefined).optional(),
+  device_watts: z.boolean().nullish().transform((value) => value ?? undefined).optional(),
+  average_speed: optionalTelemetry,
+  average_cadence: optionalTelemetry,
+  max_cadence: optionalTelemetry,
+  has_heartrate: z.boolean().nullish().transform((value) => value ?? undefined).optional(),
   max_watts: z.number().finite().nonnegative().nullish().transform((value) => value ?? undefined).optional(),
   heart_rate_zones: zoneDistributionSchema.optional(),
   power_zones: zoneDistributionSchema.optional(),
