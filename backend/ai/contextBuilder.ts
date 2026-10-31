@@ -37,6 +37,10 @@ type YearlySummary = {
 
 const contextByteBudget = 8000;
 const activityLimit = 10;
+const heartRateSemantics = {
+  max_hr_source: "configured_athlete_physiology_only",
+  telemetry_max_hr_role: "activity.max_hr, segment.max_hr, derived_metrics.max_hr_90d and yearly_summary.max_heart_rate_bpm are observed peaks, never physiological HRmax",
+};
 const encoder = new TextEncoder();
 const wrapUserContext = (xml: string) => `<user_context>${xml}</user_context>`;
 const contextSize = (xml: string) => encoder.encode(wrapUserContext(xml)).length;
@@ -67,6 +71,12 @@ function distanceLabel(value: number | undefined): string | undefined {
 
 function elevationLabel(value: number | undefined): string | undefined {
   return value === undefined ? undefined : `${Math.round(value)} m`;
+}
+
+function paceLabel(value: number | undefined): string | undefined {
+  if (value === undefined || value <= 0) return undefined;
+  const seconds = Math.round(value);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} min/km`;
 }
 
 function exactDurationLabel(value: number | undefined): string | undefined {
@@ -119,10 +129,11 @@ function activityXml(values: Metrics, includeSegments: boolean): string {
       kom_rank: segment.kom_rank,
     })}/>`;
   }).join("")}</segment_efforts>` : "";
-  const averageCadence = numeric(values.avg_cadence, values.cadence);
+  const runningCadence = numeric(values.running_cadence_spm);
+  const averageCadence = numeric(runningCadence, values.avg_cadence, values.cadence);
   const maximumCadence = numeric(values.max_cadence);
   const cadenceXml = averageCadence !== undefined || maximumCadence !== undefined
-    ? `<cadence${xmlAttributes({ avg: averageCadence, max: maximumCadence })}/>` : "";
+    ? `<cadence${xmlAttributes({ avg: averageCadence, max: maximumCadence, unit: runningCadence !== undefined ? "spm" : undefined })}/>` : "";
   return `<activity${attributes}>${segmentXml}${cadenceXml}${xmlBlock("telemetry", telemetry)}</activity>`;
 }
 
@@ -293,8 +304,18 @@ function activityMetrics(data: DataRecord, preferences: AIDataPreferences, zones
   const segments = importantSegments(efforts, data.device_watts === true && zones.settings.has_power_meter !== false);
   const athleteCount = numeric(data.athlete_count);
   const averageHr = numeric(data.average_heartrate, data.averageHeartRate, data.averageHeartRateInBeatsPerMinute);
+  const heartRateZone = preferences.effortZones ? classifyZone(averageHr, zones.hr) : undefined;
   const averagePower = numeric(data.average_watts, data.averagePower, data.averagePowerInWatts);
   const normalizedPower = numeric(data.normalized_power, data.normalizedPower, data.normalizedPowerInWatts);
+  const stravaCadence = numeric(data.average_cadence);
+  const runningCadence = numeric(data.running_cadence_spm, data.averageRunCadenceInStepsPerMinute, data.cadence,
+    stravaCadence !== undefined && data.provider === "strava" ? stravaCadence * 2 : undefined,
+    data.average_cadence, data.averageCadence);
+  const strideLengthCentimeters = numeric(data.averageStrideLengthInCentimeters, data.avgStrideLength);
+  const strideLengthMillimeters = numeric(data.stride_length_mm);
+  const strideLengthMeters = numeric(data.stride_length_m, data.stride_length, data.strideLengthInMeters,
+    strideLengthCentimeters !== undefined ? strideLengthCentimeters / 100 : undefined,
+    strideLengthMillimeters !== undefined ? strideLengthMillimeters / 1000 : undefined);
   const percent = (value: number | undefined, threshold: number | undefined) => value !== undefined && threshold !== undefined ? value / threshold * 100 : undefined;
   const powerMeasurement = data.device_watts === true ? "measured"
     : data.device_watts === false || zones.settings.has_power_meter === false ? "estimated_or_unverified"
@@ -323,8 +344,9 @@ function activityMetrics(data: DataRecord, preferences: AIDataPreferences, zones
     avg_hr: averageHr,
     max_hr: numeric(data.max_heartrate, data.maximumHeartRate, data.maxHeartRateInBeatsPerMinute),
     ...(preferences.effortZones ? {
-      hr_zone: classifyZone(averageHr, zones.hr),
-      hr_zone_basis: classifyZone(averageHr, zones.hr) ? "average_hr" : undefined,
+      hr_zone: heartRateZone,
+      hr_zone_label: heartRateZone === "Z1" ? "Z1 (Regeneracja)" : heartRateZone,
+      hr_zone_basis: heartRateZone ? "average_hr" : undefined,
       hr_pct_max: percent(averageHr, zones.settings.max_hr),
       hr_pct_lthr: percent(averageHr, zones.settings.lthr),
       power_zone: classifyZone(averagePower, zones.power),
@@ -340,14 +362,16 @@ function activityMetrics(data: DataRecord, preferences: AIDataPreferences, zones
     max_power: numeric(data.max_watts, data.maximumPower, data.maxPowerInWatts),
     normalized_power: normalizedPower,
     weighted_avg_power: numeric(data.weighted_average_watts, data.weighted_avg_power, data.weightedAveragePower),
-    avg_cadence: numeric(data.average_cadence, data.averageCadence, data.averageBikeCadenceInRoundsPerMinute),
-    max_cadence: numeric(data.max_cadence, data.maxCadence, data.maxBikeCadenceInRoundsPerMinute),
+    avg_cadence: running ? undefined : numeric(data.average_cadence, data.averageCadence, data.averageBikeCadenceInRoundsPerMinute),
+    max_cadence: running ? undefined : numeric(data.max_cadence, data.maxCadence, data.maxBikeCadenceInRoundsPerMinute),
     has_heartrate: data.has_heartrate,
     tss: numeric(data.tss, data.trainingStressScore),
     ...(running ? {
-      avg_pace: numeric(data.avg_pace, data.averagePace, duration !== undefined && distance !== undefined && distance > 0 ? duration * 1000 / distance : undefined),
-      gap: numeric(data.gap, data.grade_adjusted_pace, data.gradeAdjustedPace),
-      cadence: numeric(data.cadence, data.average_cadence, data.averageCadence, data.averageRunCadenceInStepsPerMinute),
+      avg_pace: paceLabel(numeric(data.avg_pace_s, data.avg_pace, data.averagePace,
+        duration !== undefined && distance !== undefined && distance > 0 ? duration * 1000 / distance : undefined)),
+      gap: paceLabel(numeric(data.gap, data.grade_adjusted_pace, data.gradeAdjustedPace)),
+      running_cadence_spm: runningCadence,
+      stride_length: strideLengthMeters !== undefined ? `${Math.round(strideLengthMeters * 100) / 100} m` : undefined,
     } : {}),
     rpe: numeric(data.rpe, data.perceived_exertion, data.workoutRpe),
     suffer_score: numeric(data.suffer_score, data.sufferScore),
@@ -475,6 +499,7 @@ export async function buildUserContextDetails(
   }
   const zonesXml = xmlBlock("athlete_zones", preferences.effortZones ? metrics({
     ...zones.settings,
+    ...heartRateSemantics,
     hr_method: zones.hr_method,
     hr: zones.hr,
     power_method: zones.power ? "ftp_five_zones" : "insufficient_data",
@@ -545,6 +570,7 @@ export async function buildSingleActivityContext(
   activityId: string,
   preferences: AIDataPreferences = defaultAIDataPreferences,
   signal?: AbortSignal,
+  options: { fetchDetails?: boolean } = {},
 ): Promise<string | null> {
   if (!singleActivityIdPattern.test(activityId)) return null;
   const settings = authSettings();
@@ -552,10 +578,6 @@ export async function buildSingleActivityContext(
   const abortSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(6000)]) : AbortSignal.timeout(6000);
   const client = new DynamoDBClient({ region: settings.AWS_REGION, maxAttempts: 1, requestHandler: { connectionTimeout: 1000, requestTimeout: 2000 } });
   const partition = `USER#${userId}`;
-  const get = async (command: GetItemCommand) => {
-    const sortKey = command.input.Key?.SK?.S;
-    return { Item: sortKey ? (await query(sortKey))?.Item : undefined };
-  };
   const query = async (sortKey: string): Promise<{ Item?: Record<string, AttributeValue> } | null> => {
     const response = await client.send(new QueryCommand({
       TableName: settings.DYNAMODB_TABLE_NAME,
@@ -570,17 +592,15 @@ export async function buildSingleActivityContext(
     const item = (await query(sortKey))?.Item;
     return item ? record(unmarshall(item)) : null;
   };
-  const memoryStore = createAthleteMemoryStore({ get, update: (command) => client.send(command, { abortSignal }) }, settings.DYNAMODB_TABLE_NAME);
-  const [strava, garmin, profile, storedMemory] = await Promise.all([
+  const [strava, garmin, profile] = await Promise.all([
     readItem(`ACTIVITY#STRAVA#${activityId}`),
     readItem(`ACTIVITY#GARMIN#${activityId}`),
     readItem("METADATA").then((item) => item ?? {}).catch((): DataRecord => ({})),
-    memoryStore.get(userId).catch((): AthleteMemory => ({})),
   ]);
   const stored = [strava, garmin].find((item) => item !== null && item.entityType === "WORKOUT" && item.status === "ACTIVE");
   if (!stored) return null;
   let data = record(stored);
-  if (data.provider === "strava" && (data.detailLevel !== "DETAIL" || !Array.isArray(data.segment_efforts))) {
+  if (options.fetchDetails !== false && data.provider === "strava" && (data.detailLevel !== "DETAIL" || !Array.isArray(data.segment_efforts))) {
     const detailSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000);
     const detail = await fetchStravaActivityDetail(userId, activityId, settings, detailSignal).catch((error: unknown) => {
       console.warn("strava_detail_fetch_failed", { type: error instanceof Error ? error.name : "UnknownError" });
@@ -605,17 +625,14 @@ export async function buildSingleActivityContext(
     injuries: profile.injuries,
     equipment: profile.equipment,
   }));
-  const memoryXml = athleteMemoryBlock({
-    ...storedMemory,
-    focus_goal: storedMemory.focus_goal ?? (typeof profile.primaryGoal === "string" ? profile.primaryGoal.trim().slice(0, 160) || undefined : undefined),
-  });
   const zonesXml = xmlBlock("athlete_zones", preferences.effortZones ? metrics({
     ...zones.settings,
+    ...heartRateSemantics,
     hr_method: zones.hr_method,
     hr: zones.hr,
     power_method: zones.power ? "ftp_five_zones" : "insufficient_data",
     power: zones.power,
     interval_rule: "above < value <= up_to; missing up_to means unbounded",
   }) : { shared: false });
-  return `<single_activity_focus>${zonesXml}${profileXml}${memoryXml}${activityXml(values, true)}</single_activity_focus>`;
+  return `<single_activity_focus>${zonesXml}${profileXml}${activityXml(values, true)}</single_activity_focus>`;
 }

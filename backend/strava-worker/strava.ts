@@ -13,12 +13,13 @@ export function createStravaClient(
   credentials: () => Promise<{ clientId: string; clientSecret: string }>,
   request: typeof fetch = fetch,
   rate?: RateGate,
+  signal?: AbortSignal,
 ) {
   async function read(path: string, accessToken: string) {
     await rate?.before("read");
     const response = await request(`https://www.strava.com/api/v3/${path}`, {
       headers: { authorization: `Bearer ${accessToken}` },
-      signal: AbortSignal.timeout(6000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(6000)]) : AbortSignal.timeout(6000),
       redirect: "error",
     });
     await rate?.after(response.headers, response.status, "read");
@@ -41,6 +42,8 @@ export function createStravaClient(
         throw error;
       }
     },
+    fetchStreams: (id: number, token: string, keys: ("time" | "heartrate" | "cadence" | "watts")[]) =>
+      read(`activities/${id}/streams?${new URLSearchParams({ keys: keys.join(","), key_by_type: "true", resolution: "medium" })}`, token),
     fetchAthlete: (token: string) => read("athlete", token),
     listActivities: (
       token: string,
@@ -59,7 +62,7 @@ export function createStravaClient(
         "https://www.strava.com/api/v3/oauth/token",
         {
           method: "POST",
-          signal: AbortSignal.timeout(6000),
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(6000)]) : AbortSignal.timeout(6000),
           redirect: "error",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
